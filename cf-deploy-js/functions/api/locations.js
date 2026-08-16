@@ -1,4 +1,4 @@
-import { eq, gt, lt, desc } from "drizzle-orm";
+import { eq, gt, lt, gte, lte, and, inArray, desc } from "drizzle-orm";
 import { getDb } from "../../db/index.js";
 import { liveLocations, locationHistory } from "../../db/schema.js";
 
@@ -147,19 +147,48 @@ export const onRequestDelete = async ({ request, env }) => {
   const db = getDb(env.DATABASE_URL);
   const url = new URL(request.url);
 
-  // Admin-only: wipe EVERYONE's data (every live pin + all trail history).
-  // Gated by a secret key that lives only on the server (env.ADMIN_KEY,
-  // configured via `wrangler secret put ADMIN_KEY` — never checked into
-  // the repo or shipped in the app's JS). Anyone can see this button in the
-  // UI, but the request is rejected server-side unless the correct key is
-  // supplied, so only whoever holds that key can actually delete anything.
+  // Admin-only: delete data for selected people and/or a time window (or
+  // everyone/everything if neither filter is given). Gated by a secret key
+  // that lives only on the server (env.ADMIN_KEY, configured via
+  // `wrangler secret put ADMIN_KEY` — never checked into the repo or shipped
+  // in the app's JS). Anyone can see this button in the UI, but the request
+  // is rejected server-side unless the correct key is supplied, so only
+  // whoever holds that key can actually delete anything.
   if (url.searchParams.get("admin") === "1") {
     const providedKey = request.headers.get("x-admin-key") || "";
     if (!env.ADMIN_KEY || providedKey !== env.ADMIN_KEY) {
       return Response.json({ error: "unauthorized" }, { status: 401 });
     }
-    await db.delete(locationHistory);
-    await db.delete(liveLocations);
+
+    const participantsParam = url.searchParams.get("participants");
+    const participantIds = participantsParam
+      ? participantsParam.split(",").map((s) => s.trim()).filter(Boolean)
+      : null;
+    const fromParam = url.searchParams.get("from");
+    const toParam = url.searchParams.get("to");
+    const from = fromParam ? new Date(fromParam) : null;
+    const to = toParam ? new Date(toParam) : null;
+    const validFrom = from && !Number.isNaN(from.getTime()) ? from : null;
+    const validTo = to && !Number.isNaN(to.getTime()) ? to : null;
+
+    const historyConds = [];
+    if (participantIds) historyConds.push(inArray(locationHistory.participantId, participantIds));
+    if (validFrom) historyConds.push(gte(locationHistory.recordedAt, validFrom));
+    if (validTo) historyConds.push(lte(locationHistory.recordedAt, validTo));
+
+    const liveConds = [];
+    if (participantIds) liveConds.push(inArray(liveLocations.id, participantIds));
+    if (validFrom) liveConds.push(gte(liveLocations.updatedAt, validFrom));
+    if (validTo) liveConds.push(lte(liveLocations.updatedAt, validTo));
+
+    let historyQuery = db.delete(locationHistory);
+    if (historyConds.length) historyQuery = historyQuery.where(and(...historyConds));
+    await historyQuery;
+
+    let liveQuery = db.delete(liveLocations);
+    if (liveConds.length) liveQuery = liveQuery.where(and(...liveConds));
+    await liveQuery;
+
     return new Response(null, { status: 204 });
   }
 
