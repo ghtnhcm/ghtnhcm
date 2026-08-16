@@ -1,4 +1,4 @@
-import { eq, gt, lt, and, desc } from "drizzle-orm";
+import { eq, gt, lt, desc } from "drizzle-orm";
 import { getDb } from "../../db/index.js";
 import { liveLocations, locationHistory } from "../../db/schema.js";
 
@@ -8,11 +8,11 @@ const MAX_NAME_LEN = 40;
 const MAX_ID_LEN = 64;
 
 // Trail points older than this are pruned opportunistically on writes, so
-// the history table doesn't grow forever while still covering a full day
-// of survey work.
-const HISTORY_RETENTION_MS = 24 * 60 * 60 * 1000;
+// the history table doesn't grow forever while still keeping a few months
+// of past survey journeys available for reference/reporting.
+const HISTORY_RETENTION_MS = 90 * 24 * 60 * 60 * 1000; // ~3 months
 // Safety cap on how many trail points come back per session in one response.
-const MAX_HISTORY_POINTS_PER_SESSION = 2000;
+const MAX_HISTORY_POINTS_PER_SESSION = 5000;
 
 
 export const onRequestPost = async ({ request, env }) => {
@@ -62,7 +62,8 @@ export const onRequestPost = async ({ request, env }) => {
     recordedAt: now,
   });
 
-  // Opportunistic cleanup of old trail points (no separate cron needed).
+  // Opportunistic cleanup of trail points older than the retention window
+  // (no separate cron needed).
   const historyCutoff = new Date(Date.now() - HISTORY_RETENTION_MS);
   db.delete(locationHistory).where(lt(locationHistory.recordedAt, historyCutoff)).catch(() => {});
 
@@ -91,8 +92,8 @@ export const onRequestGet = async ({ request, env }) => {
   }
 
   // Return each currently-active participant's trail for their current
-  // session, so the client can draw a route line per person.
-  const historyCutoff = new Date(Date.now() - HISTORY_RETENTION_MS);
+  // session, so the client can draw a route line per person. History is
+  // kept indefinitely, so this just looks at everyone still checked-in.
   const trails = {};
 
   for (const row of rows) {
@@ -104,7 +105,7 @@ export const onRequestGet = async ({ request, env }) => {
         sessionId: locationHistory.sessionId,
       })
       .from(locationHistory)
-      .where(and(eq(locationHistory.participantId, row.id), gt(locationHistory.recordedAt, historyCutoff)))
+      .where(eq(locationHistory.participantId, row.id))
       .orderBy(desc(locationHistory.recordedAt))
       .limit(MAX_HISTORY_POINTS_PER_SESSION);
 
