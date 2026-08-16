@@ -27,7 +27,7 @@
     z-index:5;
     box-shadow:2px 0 10px rgba(0,0,0,0.04);
   }
-  #map{flex:1;height:100%;}
+  #map{flex:1;height:100%;position:relative;}
   h1{
     font-size:19px;
     margin:0 0 2px;
@@ -211,10 +211,22 @@
   details.field-group[open] > summary::before{transform:rotate(90deg);}
   details.field-group > summary .layer-count{margin-left:4px;}
 
+  #app.sidebar-hidden #sidebar{display:none;}
+
+  #btn-toggle-sidebar{
+    position:absolute;top:12px;left:12px;z-index:20;
+    background:var(--panel);border:1px solid var(--line);border-radius:8px;
+    padding:8px 11px;font-size:13px;font-weight:600;cursor:pointer;
+    box-shadow:0 2px 8px rgba(0,0,0,0.18);color:var(--ink);
+    display:flex;align-items:center;gap:6px;white-space:nowrap;
+  }
+  #btn-toggle-sidebar:hover{background:#f1efe6;}
+
   @media (max-width:760px){
     #app{flex-direction:column;}
     #sidebar{width:100%;max-width:none;height:42vh;border-right:none;border-bottom:1px solid var(--line);}
     #map{height:58vh;}
+    #app.sidebar-hidden #map{height:calc(100vh - 54px);}
   }
 </style>
 </head>
@@ -233,7 +245,7 @@
 
     <div id="stats"></div>
     <div class="legend-note">Bấm vào 1 khu vực trên bản đồ để xem tên KV. Bỏ tick 1 mục để ẩn lớp đó khỏi bản đồ.</div>
-    <div class="legend-note" style="margin-top:6px;">💡 Ở góc phải bản đồ có nút chọn <b>loại nền bản đồ</b>: "Đường phố chi tiết" sẽ hiện <b>số nhà</b> khi phóng to (zoom) sâu vào từng con hẻm/tuyến đường; "Vệ tinh" để đối chiếu thực địa.</div>
+    <div class="legend-note" style="margin-top:6px;">💡 Ở góc phải bản đồ có nút <b>🗺️ chọn loại nền bản đồ</b> (bấm để mở/đóng): "Đường phố chi tiết" sẽ hiện <b>số nhà</b> khi phóng to (zoom) sâu vào từng con hẻm/tuyến đường; "Vệ tinh" để đối chiếu thực địa.</div>
 
     <div class="section-title">Khảo sát &amp; tuyển dụng thực tế</div>
     <button id="btn-locate" class="field-btn">📍 Bật định vị / theo dõi vị trí</button>
@@ -283,7 +295,9 @@
     <div class="legend-note" id="lead-admin-status"></div>
 
   </div>
-  <div id="map"></div>
+  <div id="map">
+    <button id="btn-toggle-sidebar" type="button">◀ Ẩn bảng điều khiển</button>
+  </div>
 </div>
 
 <div class="modal-overlay" id="lead-modal-overlay">
@@ -333,6 +347,28 @@ const DATA = {"cuchi": {"type": "MultiPolygon", "coordinates": [[[[106.356771, 1
 
 const map = L.map('map', {zoomControl:true}).setView([10.98, 106.55], 11);
 
+// Thu gọn/hiện lại bảng điều khiển bên trái để nhìn bản đồ rộng hơn — nhớ
+// trạng thái qua localStorage nên lần mở lại trang vẫn giữ nguyên lựa chọn.
+(function(){
+  const appEl = document.getElementById('app');
+  const btnToggle = document.getElementById('btn-toggle-sidebar');
+  const HIDDEN_KEY = 'khaosat-sidebar-hidden';
+  function applyState(hidden){
+    appEl.classList.toggle('sidebar-hidden', hidden);
+    btnToggle.textContent = hidden ? '▶ Hiện bảng điều khiển' : '◀ Ẩn bảng điều khiển';
+    // Kích thước #map vừa đổi (thu/nới sidebar) — báo cho Leaflet vẽ lại
+    // tile cho đúng, nếu không bản đồ sẽ bị lệch/xám 1 phần cho tới khi resize.
+    setTimeout(function(){ map.invalidateSize(); }, 220);
+  }
+  const initiallyHidden = localStorage.getItem(HIDDEN_KEY) === '1';
+  applyState(initiallyHidden);
+  btnToggle.addEventListener('click', function(){
+    const hidden = !appEl.classList.contains('sidebar-hidden');
+    localStorage.setItem(HIDDEN_KEY, hidden ? '1' : '0');
+    applyState(hidden);
+  });
+})();
+
 // ---------- Các loại nền bản đồ (base layers) ----------
 // 1) Đường phố chi tiết (OpenStreetMap chuẩn) — hiển thị số nhà khi zoom sâu (~z18-19) ở khu vực đã có dữ liệu
 const layerStreetDetailed = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -373,7 +409,7 @@ const baseMaps = {
   "🛰️ Vệ tinh + tên đường": layerSatelliteLabels,
   "⬜ Bản đồ đơn giản": layerSimple
 };
-L.control.layers(baseMaps, null, {position:'topright', collapsed:false}).addTo(map);
+L.control.layers(baseMaps, null, {position:'topright', collapsed:true}).addTo(map);
 
 const layerGroups = {};
 
