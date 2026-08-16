@@ -1,4 +1,4 @@
-import { pgTable, text, doublePrecision, timestamp, serial } from "drizzle-orm/pg-core";
+import { pgTable, text, doublePrecision, timestamp, serial, integer, jsonb } from "drizzle-orm/pg-core";
 
 // One row per participant currently sharing their live location.
 // Rows are upserted on every position update and considered stale (hidden)
@@ -34,17 +34,25 @@ export const locationHistory = pgTable("location_history", {
 // door-to-door recruitment. Unlike the plain notes (which only live in the
 // browser's localStorage), leads are shared server-side so the whole team
 // sees the same pipeline and nobody re-visits an address someone else
-// already covered. "status" tracks where the lead currently sits in the
-// funnel; the full history of status changes/visits lives in leadVisits.
+// already covered. "status" tracks the candidate type (khong_tiem_nang /
+// ung_vien_a / ung_vien_b / ung_vien_c); the full history of status
+// changes/visits lives in leadVisits. "eval_answers" holds the 10-criteria
+// screening checklist (1 = Có, 0 = Không, per question index), with
+// "eval_score" (số câu "Có") and "eval_result" ("dat" khi đủ 10/10 điểm,
+// "chua_dat" khi chưa đủ) kept alongside for quick display/filtering
+// without recomputing from the raw answers each time.
 export const leads = pgTable("leads", {
   id: text().primaryKey(),
   name: text(),
   phone: text(),
   lat: doublePrecision().notNull(),
   lng: doublePrecision().notNull(),
-  status: text().notNull().default("chua_gap"),
+  status: text().notNull().default("khong_tiem_nang"),
   note: text(),
   nextVisitAt: timestamp("next_visit_at"),
+  evalAnswers: jsonb("eval_answers"),
+  evalScore: integer("eval_score"),
+  evalResult: text("eval_result"),
   createdBy: text("created_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
