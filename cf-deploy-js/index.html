@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Bản đồ khảo sát Củ Chi — CH Xuyên Á</title>
+<title>Bản đồ GHTN- HCM </title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
 <style>
   :root{
@@ -153,17 +153,14 @@
 <body>
 <div id="app">
   <div id="sidebar">
-    <h1>Khảo sát Củ Chi</h1>
-    <p class="subtitle">Địa phận Củ Chi (TP.HCM) và ranh giới các khu vực hiện có của CH Xuyên Á giáp ranh — dùng để lên lộ trình đi hết các tuyến đường và đánh giá mật độ dân cư cho việc mở cửa hàng/chi nhánh mới.</p>
+    <h1>Bản đồ GHTN-HCM</h1>
 
-    <div class="section-title">TP.HCM — Các nhóm cửa hàng</div>
     <div class="layer-row" onclick="toggleLayerByRow(this,'diemkv')">
       <input type="checkbox" id="chk-diemkv" checked onclick="event.stopPropagation()">
       <span class="swatch" style="background:#44444455;border-color:#444444;"></span>
       <span class="layer-label">Điểm tên các KV toàn TP.HCM</span>
       <span class="layer-count" id="cnt-diemkv"></span>
     </div>
-    <div class="legend-note" style="margin:4px 0 6px;">Nhóm theo cụm khu vực (tắt sẵn để đỡ rối bản đồ):</div>
     <div id="giaidoan-rows"></div>
 
     <div id="stats"></div>
@@ -176,13 +173,11 @@
 
     <button id="btn-groupshare" class="field-btn field-btn-secondary">👥 Chia sẻ vị trí với nhóm</button>
     <div class="legend-note" id="group-status"></div>
-    <div class="legend-note">Bật mục này để mọi người trong nhóm cùng bật đều thấy vị trí của nhau trên bản đồ (vị trí được gửi tạm lên server dùng chung, tự động ẩn sau ~90 giây nếu tắt hoặc mất kết nối). Đồng thời, <b>hành trình di chuyển</b> của từng người (đường đi từ lúc bật đến giờ) cũng được vẽ lại trên bản đồ để cả nhóm biết ai đã đi qua tuyến nào — hành trình này được lưu tạm trên server và tự xoá sau khoảng 24 giờ.</div>
 
     <button id="btn-notemode" class="field-btn field-btn-secondary">✏️ Bấm bản đồ để ghi chú điểm</button>
     <div id="note-list"></div>
     <button id="btn-export" class="field-btn field-btn-secondary" style="display:none;">⬇️ Xuất ghi chú (GeoJSON)</button>
 
-    <div id="footer-note">Ranh giới Củ Chi: OpenStreetMap (địa giới trước sáp nhập 6/2025, dùng làm mốc tham chiếu quen thuộc). Ranh giới các KV Xuyên Á: theo file bản đồ nội bộ được cung cấp. Vị trí GPS và ghi chú xử lý hoàn toàn trên máy, không gửi lên máy chủ nào — đóng trang là mất, nên nhớ xuất file trước khi rời khảo sát. Riêng mục "Chia sẻ vị trí với nhóm" là ngoại lệ: khi bật, vị trí hiện tại (kèm tên bạn nhập) được gửi tạm lên server dùng chung để các thành viên khác thấy nhau, và tự ẩn khỏi bản đồ sau ~90 giây không cập nhật. Ngoài ra, hành trình di chuyển (chuỗi các điểm đã đi qua trong lượt chia sẻ đó) cũng được ghi lại trên server để vẽ đường đi của từng người, và được tự động xoá sau khoảng 24 giờ.</div>
   </div>
   <div id="map"></div>
 </div>
