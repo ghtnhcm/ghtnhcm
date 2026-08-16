@@ -1,0 +1,17 @@
+import { onRequestGet, onRequestPost, onRequestDelete } from './functions/api/locations.js';
+
+export default {
+  async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+
+    if (url.pathname === '/api/locations') {
+      const c = { request, env, ctx };
+      if (request.method === 'GET') return onRequestGet(c);
+      if (request.method === 'POST') return onRequestPost(c);
+      if (request.method === 'DELETE') return onRequestDelete(c);
+      return new Response('Method not allowed', { status: 405 });
+    }
+
+    return env.ASSETS.fetch(request);
+  }
+};
