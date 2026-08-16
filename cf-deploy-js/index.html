@@ -570,9 +570,90 @@ function newSessionId(){
 let groupSharing = false;
 let groupPollTimer = null;
 let lastPushAt = 0;
-let mySessionId = null; // đổi mỗi lần bật lại chia sẻ, để hành trình từng lượt tách riêng
+// Phiên chia sẻ (sessionId) được lưu vào localStorage, không chỉ giữ trong biến JS.
+// Nếu trang bị tải lại giữa chừng (mất mạng, điện thoại làm mới trang nền, v.v.)
+// mà lúc đó vẫn đang bật chia sẻ, app sẽ tự khôi phục ĐÚNG sessionId cũ bên dưới
+// thay vì tạo phiên mới — nhờ vậy hành trình không bị cắt thành nhiều đoạn rời rạc.
+let mySessionId = localStorage.getItem('khaosat-session-id') || null;
+const wasSharing = localStorage.getItem('khaosat-sharing') === '1';
 const otherMarkers = {}; // id -> Leaflet marker
 const trailLines = {}; // id -> Leaflet polyline (hành trình di chuyển của người đó)
+const stopMarkers = {}; // id -> mảng Leaflet marker các điểm nghỉ
+
+// Giữ màn hình sáng trong lúc đang chia sẻ, để hệ điều hành đỡ tự tạm dừng
+// GPS/JS chạy nền — nguyên nhân phổ biến nhất khiến bạn "rớt" khỏi bản đồ nhóm.
+let wakeLock = null;
+async function requestWakeLock(){
+  try{
+    if('wakeLock' in navigator){
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', function(){ wakeLock = null; });
+    }
+  }catch(e){ /* trình duyệt không hỗ trợ hoặc từ chối — bỏ qua, không ảnh hưởng chức năng chính */ }
+}
+function releaseWakeLock(){
+  if(wakeLock){ wakeLock.release().catch(function(){}); wakeLock = null; }
+}
+document.addEventListener('visibilitychange', function(){
+  if(document.visibilityState === 'visible' && groupSharing){ requestWakeLock(); }
+});
+
+// ---------- Đo khoảng cách / thời gian / điểm nghỉ trên mỗi hành trình ----------
+function haversineMeters(a, b){
+  const R = 6371000;
+  const toRad = function(d){ return d * Math.PI / 180; };
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const lat1 = toRad(a.lat), lat2 = toRad(b.lat);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+function formatDuration(ms){
+  const totalMin = Math.round(ms / 60000);
+  const h = Math.floor(totalMin / 60), m = totalMin % 60;
+  if(h > 0) return h + ' giờ ' + m + ' phút';
+  return m + ' phút';
+}
+
+// Tổng quãng đường (km) và tổng thời gian (từ điểm đầu đến điểm cuối) của một hành trình.
+function computeTrailStats(points){
+  let distM = 0;
+  for(let i = 1; i < points.length; i++){ distM += haversineMeters(points[i - 1], points[i]); }
+  const startT = new Date(points[0].t);
+  const endT = new Date(points[points.length - 1].t);
+  return { distanceKm: distM / 1000, durationMs: endT - startT };
+}
+
+// Điểm nghỉ = một cụm điểm liên tiếp mà người này gần như đứng yên (trong bán kính
+// REST_RADIUS_M) suốt ít nhất REST_MIN_MS — tách khỏi lúc đang di chuyển bình thường.
+const REST_RADIUS_M = 25;
+const REST_MIN_MS = 3 * 60 * 1000;
+
+function detectStops(points){
+  const stops = [];
+  let clusterStart = 0;
+  for(let i = 1; i <= points.length; i++){
+    const brokeCluster = i === points.length || haversineMeters(points[clusterStart], points[i]) > REST_RADIUS_M;
+    if(brokeCluster){
+      const clusterEnd = i - 1;
+      if(clusterEnd > clusterStart){
+        const dwellMs = new Date(points[clusterEnd].t) - new Date(points[clusterStart].t);
+        if(dwellMs >= REST_MIN_MS){
+          let sumLat = 0, sumLng = 0;
+          const n = clusterEnd - clusterStart + 1;
+          for(let j = clusterStart; j <= clusterEnd; j++){ sumLat += points[j].lat; sumLng += points[j].lng; }
+          stops.push({
+            lat: sumLat / n, lng: sumLng / n,
+            startT: points[clusterStart].t, endT: points[clusterEnd].t, dwellMs: dwellMs
+          });
+        }
+      }
+      clusterStart = i;
+    }
+  }
+  return stops;
+}
 
 const btnGroupShare = document.getElementById('btn-groupshare');
 const groupStatus = document.getElementById('group-status');
@@ -612,6 +693,13 @@ function drawTrails(trails){
     seenIds.add(id);
     const latlngs = trail.points.map(function(p){ return [p.lat, p.lng]; });
     const isMe = id === myId;
+    const stats = computeTrailStats(trail.points);
+    const stops = detectStops(trail.points);
+    const popupHtml = '<b>Hành trình: ' + (trail.name || 'Thành viên') + '</b><br>' +
+      'Quãng đường: ' + stats.distanceKm.toFixed(2) + ' km<br>' +
+      'Thời gian: ' + formatDuration(stats.durationMs) +
+      (stops.length ? '<br>Số điểm nghỉ: ' + stops.length : '');
+
     if(!trailLines[id]){
       trailLines[id] = L.polyline(latlngs, {
         color: isMe ? '#2563eb' : colorForId(id),
@@ -620,15 +708,31 @@ function drawTrails(trails){
         dashArray: isMe ? null : '1 6',
         lineCap: 'round'
       }).addTo(map);
-      trailLines[id].bindPopup('<b>Hành trình: ' + (trail.name || 'Thành viên') + '</b>');
     } else {
       trailLines[id].setLatLngs(latlngs);
     }
+    trailLines[id].bindPopup(popupHtml);
+
+    // Vẽ lại các điểm nghỉ của người này
+    (stopMarkers[id] || []).forEach(function(m){ map.removeLayer(m); });
+    stopMarkers[id] = stops.map(function(stop){
+      const marker = L.circleMarker([stop.lat, stop.lng], {
+        radius: 7, color: '#fff', weight: 2,
+        fillColor: '#b3541e', fillOpacity: 0.95
+      }).addTo(map);
+      marker.bindPopup(
+        '<b>Điểm nghỉ — ' + (trail.name || 'Thành viên') + '</b><br>' +
+        'Dừng khoảng ' + formatDuration(stop.dwellMs)
+      );
+      return marker;
+    });
   });
   Object.keys(trailLines).forEach(function(id){
     if(!seenIds.has(id)){
       map.removeLayer(trailLines[id]);
       delete trailLines[id];
+      (stopMarkers[id] || []).forEach(function(m){ map.removeLayer(m); });
+      delete stopMarkers[id];
     }
   });
 }
@@ -672,13 +776,32 @@ async function pollGroupLocations(){
 function stopGroupSharing(){
   groupSharing = false;
   mySessionId = null;
+  localStorage.removeItem('khaosat-session-id');
+  localStorage.removeItem('khaosat-sharing');
+  releaseWakeLock();
   btnGroupShare.classList.remove('active');
   btnGroupShare.textContent = '👥 Chia sẻ vị trí với nhóm';
   groupStatus.textContent = '';
   if(groupPollTimer){ clearInterval(groupPollTimer); groupPollTimer = null; }
   clearOtherMarkers();
   clearTrailLines();
+  Object.keys(stopMarkers).forEach(function(id){ (stopMarkers[id] || []).forEach(function(m){ map.removeLayer(m); }); });
+  for(const id in stopMarkers){ delete stopMarkers[id]; }
   fetch(GROUP_API + '?id=' + encodeURIComponent(myId), {method:'DELETE'}).catch(function(){});
+}
+
+function startGroupSharing(keepSessionId){
+  groupSharing = true;
+  mySessionId = keepSessionId || newSessionId();
+  localStorage.setItem('khaosat-session-id', mySessionId);
+  localStorage.setItem('khaosat-sharing', '1');
+  requestWakeLock();
+  btnGroupShare.classList.add('active');
+  btnGroupShare.textContent = '👥 Đang chia sẻ với nhóm (bấm để tắt)';
+  groupStatus.textContent = 'Đang kết nối...';
+  if(watchId === null){ btnLocate.click(); } // dùng chung nguồn GPS với định vị cá nhân
+  pollGroupLocations();
+  groupPollTimer = setInterval(pollGroupLocations, GROUP_POLL_MS);
 }
 
 btnGroupShare.addEventListener('click', function(){
@@ -696,16 +819,16 @@ btnGroupShare.addEventListener('click', function(){
     localStorage.setItem('khaosat-my-name', myName);
   }
 
-  if(watchId === null){ btnLocate.click(); } // dùng chung nguồn GPS với định vị cá nhân
-
-  groupSharing = true;
-  mySessionId = newSessionId();
-  btnGroupShare.classList.add('active');
-  btnGroupShare.textContent = '👥 Đang chia sẻ với nhóm (bấm để tắt)';
-  groupStatus.textContent = 'Đang kết nối...';
-  pollGroupLocations();
-  groupPollTimer = setInterval(pollGroupLocations, GROUP_POLL_MS);
+  startGroupSharing(); // phiên mới, người dùng chủ động bật lại từ đầu
 });
+
+// Nếu trang bị tải lại trong lúc đang chia sẻ (mất mạng, điện thoại tự làm mới
+// tab nền, v.v.), tự động khôi phục ĐÚNG phiên cũ để hành trình nối liền mạch
+// thay vì bị cắt thành một đoạn mới.
+if(wasSharing && mySessionId && myName){
+  groupStatus.textContent = 'Đang khôi phục phiên chia sẻ trước đó...';
+  startGroupSharing(mySessionId);
+}
 
 // ---------- Note-taking mode ----------
 let noteMode = false;
