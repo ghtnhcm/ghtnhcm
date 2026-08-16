@@ -13,6 +13,12 @@ const MAX_ID_LEN = 64;
 const HISTORY_RETENTION_MS = 90 * 24 * 60 * 60 * 1000; // ~3 months
 // Safety cap on how many trail points come back per session in one response.
 const MAX_HISTORY_POINTS_PER_SESSION = 5000;
+// A person's trail stays visible to the group for this long after they go
+// offline (close the tab, lose signal, etc.) — the points were never
+// deleted from the database, this just controls how long the *API* keeps
+// surfacing a finished route so it doesn't vanish the moment someone
+// disconnects. Extend this if survey trips run longer than a day.
+const TRAIL_VISIBILITY_MS = 24 * 60 * 60 * 1000; // 24 giờ
 
 
 export const onRequestPost = async ({ request, env }) => {
@@ -91,12 +97,26 @@ export const onRequestGet = async ({ request, env }) => {
     return Response.json(rows);
   }
 
-  // Return each currently-active participant's trail for their current
-  // session, so the client can draw a route line per person. History is
-  // kept indefinitely, so this just looks at everyone still checked-in.
-  const trails = {};
+  // Trails stay visible for a while after someone goes offline (closes the
+  // tab, loses signal, turns sharing off) — their points were never deleted,
+  // so we still surface the route for anyone active within the visibility
+  // window, not only the people currently online. Currently-online people
+  // (in `rows`) are always included so their live-updating route shows too.
+  const trailCutoff = new Date(Date.now() - TRAIL_VISIBILITY_MS);
+  const recentParticipants = await db
+    .select({ id: locationHistory.participantId, name: locationHistory.name })
+    .from(locationHistory)
+    .where(gt(locationHistory.recordedAt, trailCutoff))
+    .groupBy(locationHistory.participantId, locationHistory.name);
 
-  for (const row of rows) {
+  const participantsForTrails = new Map();
+  for (const row of rows) participantsForTrails.set(row.id, row.name);
+  for (const p of recentParticipants) {
+    if (!participantsForTrails.has(p.id)) participantsForTrails.set(p.id, p.name);
+  }
+
+  const trails = {};
+  for (const [participantId, name] of participantsForTrails) {
     const points = await db
       .select({
         lat: locationHistory.lat,
@@ -105,7 +125,7 @@ export const onRequestGet = async ({ request, env }) => {
         sessionId: locationHistory.sessionId,
       })
       .from(locationHistory)
-      .where(eq(locationHistory.participantId, row.id))
+      .where(eq(locationHistory.participantId, participantId))
       .orderBy(desc(locationHistory.recordedAt))
       .limit(MAX_HISTORY_POINTS_PER_SESSION);
 
@@ -117,7 +137,7 @@ export const onRequestGet = async ({ request, env }) => {
       .reverse()
       .map((p) => ({ lat: p.lat, lng: p.lng, t: p.recordedAt.toISOString() }));
 
-    trails[row.id] = { name: row.name, points: sessionPoints };
+    trails[participantId] = { name, points: sessionPoints };
   }
 
   return Response.json({ locations: rows, trails });
