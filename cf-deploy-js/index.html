@@ -200,6 +200,17 @@
   }
   .modal-box{position:relative;}
 
+  details.field-group{margin-top:10px;}
+  details.field-group > summary{
+    list-style:none;cursor:pointer;font-size:13px;font-weight:700;
+    color:var(--accent2);padding:6px 4px;border-radius:6px;
+  }
+  details.field-group > summary::-webkit-details-marker{display:none;}
+  details.field-group > summary:hover{background:#f1efe6;}
+  details.field-group > summary::before{content:'▸';display:inline-block;width:12px;transition:transform .15s;}
+  details.field-group[open] > summary::before{transform:rotate(90deg);}
+  details.field-group > summary .layer-count{margin-left:4px;}
+
   @media (max-width:760px){
     #app{flex-direction:column;}
     #sidebar{width:100%;max-width:none;height:42vh;border-right:none;border-bottom:1px solid var(--line);}
@@ -224,25 +235,30 @@
     <div class="legend-note">Bấm vào 1 khu vực trên bản đồ để xem tên KV. Bỏ tick 1 mục để ẩn lớp đó khỏi bản đồ.</div>
     <div class="legend-note" style="margin-top:6px;">💡 Ở góc phải bản đồ có nút chọn <b>loại nền bản đồ</b>: "Đường phố chi tiết" sẽ hiện <b>số nhà</b> khi phóng to (zoom) sâu vào từng con hẻm/tuyến đường; "Vệ tinh" để đối chiếu thực địa.</div>
 
-    <div class="section-title">Khảo sát thực tế</div>
+    <div class="section-title">Khảo sát &amp; tuyển dụng thực tế</div>
     <button id="btn-locate" class="field-btn">📍 Bật định vị / theo dõi vị trí</button>
     <div class="legend-note" id="gps-status"></div>
 
     <button id="btn-groupshare" class="field-btn field-btn-secondary">👥 Chia sẻ vị trí với nhóm</button>
     <div class="legend-note" id="group-status"></div>
-    <div class="legend-note">Bật mục này để mọi người trong nhóm cùng bật đều thấy vị trí của nhau trên bản đồ (vị trí được gửi tạm lên server dùng chung, tự động ẩn sau ~90 giây nếu tắt hoặc mất kết nối). Đồng thời, <b>hành trình di chuyển</b> của từng người (đường đi từ lúc bật đến giờ) cũng được vẽ lại trên bản đồ để cả nhóm biết đã có nhân viên đi qua, hành trình này được lưu tạm trên server và tự xoá sau 90 ngày.</div>
-    <button id="btn-clear-trail" class="field-btn field-btn-secondary" style="margin-top:6px;">🗑️ Xóa lịch sử hành trình của tôi</button>
+    <div class="legend-note">Cả nhóm cùng bật sẽ thấy vị trí &amp; hành trình của nhau (tự ẩn sau ~90 giây nếu tắt/mất kết nối; hành trình lưu 90 ngày).</div>
+    <button id="btn-clear-trail" class="field-btn field-btn-secondary" style="margin-top:6px;">🗑️ Xóa hành trình của tôi</button>
 
-    <button id="btn-notemode" class="field-btn field-btn-secondary">✏️ Bấm bản đồ để ghi chú điểm</button>
-    <div id="note-list"></div>
-    <button id="btn-export" class="field-btn field-btn-secondary" style="display:none;">⬇️ Xuất ghi chú (GeoJSON)</button>
-    <button id="btn-clear-notes" class="field-btn field-btn-secondary" style="display:none;">🗑️ Xóa tất cả ghi chú</button>
+    <details class="field-group">
+      <summary>✏️ Ghi chú điểm khảo sát</summary>
+      <button id="btn-notemode" class="field-btn field-btn-secondary" style="margin-top:8px;">Bấm bản đồ để ghi chú điểm</button>
+      <div id="note-list"></div>
+      <button id="btn-export" class="field-btn field-btn-secondary" style="display:none;">⬇️ Xuất ghi chú (GeoJSON)</button>
+      <button id="btn-clear-notes" class="field-btn field-btn-secondary" style="display:none;">🗑️ Xóa tất cả ghi chú</button>
+    </details>
 
-    <div class="section-title">Tuyển dụng</div>
-    <div class="legend-note">Theo dõi từng "mối" tuyển dụng tận nhà — trạng thái, số điện thoại, lịch quay lại. Dữ liệu lưu trên server dùng chung cho cả nhóm.</div>
-    <button id="btn-leadmode" class="field-btn" style="margin-top:6px;">🧑‍💼 Bấm bản đồ để thêm mối tuyển dụng</button>
-    <div id="lead-funnel"></div>
-    <div id="lead-list"></div>
+    <details class="field-group" open>
+      <summary>🧑‍💼 Tuyển dụng (mối)</summary>
+      <div class="legend-note" style="margin-top:2px;">Trạng thái, SĐT, lịch quay lại — lưu chung cho cả nhóm.</div>
+      <button id="btn-leadmode" class="field-btn" style="margin-top:8px;">Bấm bản đồ để thêm mối tuyển dụng</button>
+      <div id="lead-funnel"></div>
+      <div id="lead-list"></div>
+    </details>
 
     <div class="section-title">Quản trị</div>
     <div class="legend-note">Xóa dữ liệu vị trí đã lưu trên server — có thể chọn xóa riêng từng người, giới hạn theo khoảng thời gian, hoặc để trống cả hai để xóa toàn bộ. Cần mật khẩu quản trị — chỉ người giữ mật khẩu mới xóa được.</div>
