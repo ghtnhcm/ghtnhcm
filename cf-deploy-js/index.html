@@ -832,6 +832,24 @@ if(wasSharing && mySessionId && myName){
 
 // ---------- Note-taking mode ----------
 let noteMode = false;
+// Ghi chú được lưu vào localStorage của trình duyệt sau mỗi lần thêm/xoá,
+// nên đóng tab hay tắt trình duyệt xong mở lại vẫn còn nguyên (chỉ mất nếu
+// người dùng tự xoá dữ liệu trình duyệt, hoặc đổi sang trình duyệt/máy khác).
+const NOTES_STORAGE_KEY = 'khaosat-notes';
+function loadSavedNotes(){
+  try{
+    const raw = localStorage.getItem(NOTES_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  }catch(e){ return []; }
+}
+function persistNotes(){
+  try{
+    const plain = notes.map(function(n){
+      return { lat: n.latlng.lat, lng: n.latlng.lng, text: n.text, dens: n.dens, time: n.time };
+    });
+    localStorage.setItem(NOTES_STORAGE_KEY, JSON.stringify(plain));
+  }catch(e){ /* localStorage đầy hoặc bị chặn — bỏ qua, không ảnh hưởng chức năng chính */ }
+}
 const notes = [];
 const btnNoteMode = document.getElementById('btn-notemode');
 const noteListEl = document.getElementById('note-list');
@@ -862,6 +880,7 @@ map.on('click', function(e){
   marker.bindPopup('<b>' + note.text + '</b><br>' + DENS_LABELS[dens] + '<br><span style="color:#6b6559">' + note.time + '</span>');
   note.marker = marker;
   renderNoteList();
+  persistNotes();
 });
 
 function renderNoteList(){
@@ -880,6 +899,7 @@ function renderNoteList(){
       map.removeLayer(notes[idx].marker);
       notes.splice(idx, 1);
       renderNoteList();
+      persistNotes();
     });
   });
   btnExport.style.display = notes.length ? 'block' : 'none';
@@ -904,6 +924,22 @@ btnExport.addEventListener('click', function(){
   a.click();
   URL.revokeObjectURL(url);
 });
+
+// Khôi phục các ghi chú đã lưu từ lần trước (nếu có) ngay khi mở lại trang.
+loadSavedNotes().forEach(function(saved){
+  const latlng = {lat: saved.lat, lng: saved.lng};
+  const dens = DENS_LABELS[saved.dens] ? saved.dens : 'tb';
+  const note = {latlng: latlng, text: saved.text, dens: dens, time: saved.time};
+  const marker = L.circleMarker(latlng, {
+    radius: 8, color:'#fff', weight:2,
+    fillColor: dens === 'cao' ? '#b3541e' : (dens === 'thap' ? '#6b6559' : '#c98f2b'),
+    fillOpacity: 1
+  }).addTo(map);
+  marker.bindPopup('<b>' + note.text + '</b><br>' + DENS_LABELS[dens] + '<br><span style="color:#6b6559">' + note.time + '</span>');
+  note.marker = marker;
+  notes.push(note);
+});
+renderNoteList();
 </script>
 </body>
 </html>
