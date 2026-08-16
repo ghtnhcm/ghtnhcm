@@ -143,6 +143,63 @@
   ::-webkit-scrollbar{width:8px;}
   ::-webkit-scrollbar-thumb{background:#d8d2c2;border-radius:4px;}
 
+  .lead-item{
+    background:#faf8f2;
+    border:1px solid var(--line);
+    border-radius:7px;
+    padding:8px 10px;
+    font-size:12px;
+    margin-bottom:6px;
+    line-height:1.5;
+  }
+  .lead-item b{color:var(--ink);}
+  .lead-tag{
+    display:inline-block;font-size:10px;font-weight:700;
+    padding:1px 6px;border-radius:10px;margin-right:5px;color:#fff;
+  }
+  .lead-chua_gap{background:#6b6559;}
+  .lead-da_gap_chua_quan_tam{background:#c98f2b;}
+  .lead-quan_tam{background:#2f5d50;}
+  .lead-hen_phong_van{background:#2b6cb3;}
+  .lead-da_tuyen{background:#1e7d32;}
+  .lead-tu_choi{background:#8a2f2f;}
+  .lead-item .lead-actions{margin-top:4px;}
+  .lead-item .lead-actions button{
+    border:none;background:none;color:#b3541e;font-size:11px;cursor:pointer;padding:0;margin-right:10px;
+  }
+  .lead-next-visit{color:var(--accent);font-weight:600;}
+  #lead-funnel{
+    background:#faf8f2;border:1px solid var(--line);border-radius:8px;
+    padding:10px 12px;font-size:12.5px;margin-top:6px;line-height:1.6;
+  }
+  #lead-funnel b{color:var(--ink);}
+
+  .modal-overlay{
+    display:none;position:fixed;inset:0;background:rgba(28,35,33,0.45);
+    z-index:1000;align-items:center;justify-content:center;padding:16px;
+  }
+  .modal-overlay.open{display:flex;}
+  .modal-box{
+    background:var(--panel);border-radius:12px;max-width:380px;width:100%;
+    padding:20px;box-shadow:0 10px 30px rgba(0,0,0,0.25);max-height:88vh;overflow-y:auto;
+  }
+  .modal-box h2{font-size:16px;margin:0 0 4px;color:var(--ink);}
+  .modal-box .legend-note{margin-bottom:14px;}
+  .modal-field{margin-bottom:12px;}
+  .modal-field label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:600;}
+  .modal-field input,.modal-field select,.modal-field textarea{
+    width:100%;padding:8px 9px;border:1px solid var(--line);border-radius:7px;
+    background:var(--panel);color:var(--ink);font-size:13px;font-family:inherit;
+  }
+  .modal-field textarea{resize:vertical;min-height:60px;}
+  .modal-actions{display:flex;gap:8px;margin-top:16px;}
+  .modal-actions button{flex:1;}
+  .modal-close-x{
+    position:absolute;top:14px;right:16px;border:none;background:none;
+    font-size:18px;color:var(--muted);cursor:pointer;line-height:1;
+  }
+  .modal-box{position:relative;}
+
   @media (max-width:760px){
     #app{flex-direction:column;}
     #sidebar{width:100%;max-width:none;height:42vh;border-right:none;border-bottom:1px solid var(--line);}
@@ -181,6 +238,12 @@
     <button id="btn-export" class="field-btn field-btn-secondary" style="display:none;">⬇️ Xuất ghi chú (GeoJSON)</button>
     <button id="btn-clear-notes" class="field-btn field-btn-secondary" style="display:none;">🗑️ Xóa tất cả ghi chú</button>
 
+    <div class="section-title">Tuyển dụng</div>
+    <div class="legend-note">Theo dõi từng "mối" tuyển dụng tận nhà — trạng thái, số điện thoại, lịch quay lại. Dữ liệu lưu trên server dùng chung cho cả nhóm.</div>
+    <button id="btn-leadmode" class="field-btn" style="margin-top:6px;">🧑‍💼 Bấm bản đồ để thêm mối tuyển dụng</button>
+    <div id="lead-funnel"></div>
+    <div id="lead-list"></div>
+
     <div class="section-title">Quản trị</div>
     <div class="legend-note">Xóa dữ liệu vị trí đã lưu trên server — có thể chọn xóa riêng từng người, giới hạn theo khoảng thời gian, hoặc để trống cả hai để xóa toàn bộ. Cần mật khẩu quản trị — chỉ người giữ mật khẩu mới xóa được.</div>
     <button id="btn-admin-refresh" class="field-btn field-btn-secondary" style="margin-top:6px;">🔄 Tải danh sách người có dữ liệu</button>
@@ -198,8 +261,54 @@
     <button id="btn-admin-wipe" class="field-btn field-btn-secondary" style="margin-top:8px;color:#b3541e;">🔒 Xóa dữ liệu đã chọn (Admin)</button>
     <div class="legend-note" id="admin-status"></div>
 
+    <div class="legend-note" style="margin-top:14px;">Xóa dữ liệu <b>tuyển dụng (mối)</b> đã lưu trên server — chọn theo trạng thái và/hoặc khoảng thời gian ở trên, để trống cả hai để xóa toàn bộ. Dùng chung mật khẩu quản trị.</div>
+    <div id="lead-admin-statuses" class="legend-note" style="margin-top:6px;"></div>
+    <button id="btn-admin-wipe-leads" class="field-btn field-btn-secondary" style="margin-top:8px;color:#b3541e;">🔒 Xóa dữ liệu tuyển dụng đã chọn (Admin)</button>
+    <div class="legend-note" id="lead-admin-status"></div>
+
   </div>
   <div id="map"></div>
+</div>
+
+<div class="modal-overlay" id="lead-modal-overlay">
+  <div class="modal-box">
+    <button type="button" class="modal-close-x" id="lead-modal-close">✕</button>
+    <h2 id="lead-modal-title">Thêm mối tuyển dụng</h2>
+    <div class="legend-note" id="lead-modal-subtitle">Ghi lại thông tin người được tiếp cận tại điểm vừa chọn trên bản đồ.</div>
+    <form id="lead-form">
+      <div class="modal-field">
+        <label for="lead-field-name">Tên</label>
+        <input type="text" id="lead-field-name" maxlength="60" placeholder="VD: Chị Lan, nhà số 12...">
+      </div>
+      <div class="modal-field">
+        <label for="lead-field-phone">Số điện thoại</label>
+        <input type="tel" id="lead-field-phone" maxlength="20" placeholder="VD: 0901 234 567">
+      </div>
+      <div class="modal-field">
+        <label for="lead-field-status">Trạng thái</label>
+        <select id="lead-field-status">
+          <option value="chua_gap">Chưa gặp</option>
+          <option value="da_gap_chua_quan_tam">Đã gặp, chưa quan tâm</option>
+          <option value="quan_tam">Quan tâm</option>
+          <option value="hen_phong_van">Hẹn phỏng vấn</option>
+          <option value="da_tuyen">Đã tuyển</option>
+          <option value="tu_choi">Từ chối</option>
+        </select>
+      </div>
+      <div class="modal-field">
+        <label for="lead-field-note">Ghi chú</label>
+        <textarea id="lead-field-note" maxlength="1000" placeholder="Chi tiết trao đổi, nhu cầu, lưu ý..."></textarea>
+      </div>
+      <div class="modal-field">
+        <label for="lead-field-nextvisit">Hẹn quay lại (tùy chọn)</label>
+        <input type="datetime-local" id="lead-field-nextvisit">
+      </div>
+      <div class="modal-actions">
+        <button type="button" id="lead-modal-cancel" class="field-btn field-btn-secondary">Hủy</button>
+        <button type="submit" class="field-btn">Lưu</button>
+      </div>
+    </form>
+  </div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
@@ -1070,6 +1179,293 @@ loadSavedNotes().forEach(function(saved){
   notes.push(note);
 });
 renderNoteList();
+
+// ---------- Tuyển dụng (leads) ----------
+// Khác với "Ghi chú" (chỉ lưu localStorage, riêng từng máy), dữ liệu tuyển
+// dụng lưu trên server dùng chung (bảng leads + lead_visits) để cả nhóm
+// theo dõi cùng 1 phễu và không ai giẫm chân đi trùng địa chỉ đã có người tới.
+const LEADS_API = '/api/leads';
+const LEAD_STATUS_LABELS = {
+  chua_gap: 'Chưa gặp',
+  da_gap_chua_quan_tam: 'Đã gặp, chưa quan tâm',
+  quan_tam: 'Quan tâm',
+  hen_phong_van: 'Hẹn phỏng vấn',
+  da_tuyen: 'Đã tuyển',
+  tu_choi: 'Từ chối'
+};
+const LEAD_STATUS_ORDER = ['chua_gap', 'da_gap_chua_quan_tam', 'quan_tam', 'hen_phong_van', 'da_tuyen', 'tu_choi'];
+
+let leadMode = false;
+let leadsData = []; // mảng các mối lấy từ server
+const leadMarkers = {}; // id -> Leaflet marker
+let editingLeadId = null; // null = đang tạo mối mới; có giá trị = đang cập nhật mối đã có
+let pendingNewLeadLatLng = null; // vị trí vừa bấm trên bản đồ khi tạo mối mới
+
+const btnLeadMode = document.getElementById('btn-leadmode');
+const leadListEl = document.getElementById('lead-list');
+const leadFunnelEl = document.getElementById('lead-funnel');
+const leadModalOverlay = document.getElementById('lead-modal-overlay');
+const leadModalTitle = document.getElementById('lead-modal-title');
+const leadModalSubtitle = document.getElementById('lead-modal-subtitle');
+const leadForm = document.getElementById('lead-form');
+const leadFieldName = document.getElementById('lead-field-name');
+const leadFieldPhone = document.getElementById('lead-field-phone');
+const leadFieldStatus = document.getElementById('lead-field-status');
+const leadFieldNote = document.getElementById('lead-field-note');
+const leadFieldNextVisit = document.getElementById('lead-field-nextvisit');
+
+btnLeadMode.addEventListener('click', function(){
+  leadMode = !leadMode;
+  btnLeadMode.classList.toggle('active', leadMode);
+  btnLeadMode.textContent = leadMode ? '🧑‍💼 Đang thêm mối — bấm bản đồ để đặt điểm (bấm lại để tắt)' : '🧑‍💼 Bấm bản đồ để thêm mối tuyển dụng';
+  map.getContainer().style.cursor = leadMode ? 'crosshair' : '';
+});
+
+map.on('click', function(e){
+  if(!leadMode) return;
+  openLeadModal({ mode: 'create', latlng: e.latlng });
+});
+
+function openLeadModal(opts){
+  if(opts.mode === 'create'){
+    editingLeadId = null;
+    pendingNewLeadLatLng = opts.latlng;
+    leadModalTitle.textContent = 'Thêm mối tuyển dụng';
+    leadModalSubtitle.textContent = 'Ghi lại thông tin người được tiếp cận tại điểm vừa chọn trên bản đồ.';
+    leadFieldName.value = '';
+    leadFieldPhone.value = '';
+    leadFieldStatus.value = 'chua_gap';
+    leadFieldNote.value = '';
+    leadFieldNextVisit.value = '';
+  } else {
+    const lead = opts.lead;
+    editingLeadId = lead.id;
+    pendingNewLeadLatLng = null;
+    leadModalTitle.textContent = 'Cập nhật mối tuyển dụng';
+    leadModalSubtitle.textContent = 'Lần ghé thăm mới sẽ được thêm vào lịch sử của mối này.';
+    leadFieldName.value = lead.name || '';
+    leadFieldPhone.value = lead.phone || '';
+    leadFieldStatus.value = LEAD_STATUS_LABELS[lead.status] ? lead.status : 'chua_gap';
+    leadFieldNote.value = '';
+    leadFieldNextVisit.value = lead.nextVisitAt ? toDatetimeLocalValue(lead.nextVisitAt) : '';
+  }
+  leadModalOverlay.classList.add('open');
+  leadFieldName.focus();
+}
+
+function closeLeadModal(){
+  leadModalOverlay.classList.remove('open');
+  if(editingLeadId === null && pendingNewLeadLatLng){
+    // Hủy khi đang tạo mới — không để lại điểm ma trên bản đồ.
+  }
+  pendingNewLeadLatLng = null;
+  editingLeadId = null;
+}
+
+document.getElementById('lead-modal-close').addEventListener('click', closeLeadModal);
+document.getElementById('lead-modal-cancel').addEventListener('click', closeLeadModal);
+leadModalOverlay.addEventListener('click', function(e){ if(e.target === leadModalOverlay) closeLeadModal(); });
+
+function toDatetimeLocalValue(iso){
+  const d = new Date(iso);
+  if(Number.isNaN(d.getTime())) return '';
+  const pad = function(n){ return String(n).padStart(2, '0'); };
+  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+}
+
+leadForm.addEventListener('submit', async function(e){
+  e.preventDefault();
+  const name = leadFieldName.value.trim();
+  const phone = leadFieldPhone.value.trim();
+  const status = leadFieldStatus.value;
+  const note = leadFieldNote.value.trim();
+  const nextVisitAt = leadFieldNextVisit.value ? new Date(leadFieldNextVisit.value).toISOString() : null;
+
+  try{
+    if(editingLeadId === null){
+      const id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : ('lead-' + Math.random().toString(36).slice(2) + Date.now().toString(36));
+      await fetch(LEADS_API, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          id: id, name: name, phone: phone, status: status, note: note,
+          nextVisitAt: nextVisitAt, lat: pendingNewLeadLatLng.lat, lng: pendingNewLeadLatLng.lng,
+          createdBy: myName || null
+        })
+      });
+    } else {
+      await fetch(LEADS_API, {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          id: editingLeadId, name: name, phone: phone, status: status, note: note,
+          nextVisitAt: nextVisitAt, visitedBy: myName || null
+        })
+      });
+    }
+    leadModalOverlay.classList.remove('open');
+    editingLeadId = null;
+    pendingNewLeadLatLng = null;
+    await loadLeads();
+  }catch(err){
+    alert('Không lưu được, kiểm tra kết nối mạng và thử lại.');
+  }
+});
+
+function leadStatusColor(status){
+  return {
+    chua_gap: '#6b6559', da_gap_chua_quan_tam: '#c98f2b', quan_tam: '#2f5d50',
+    hen_phong_van: '#2b6cb3', da_tuyen: '#1e7d32', tu_choi: '#8a2f2f'
+  }[status] || '#6b6559';
+}
+
+function renderLeadMarker(lead){
+  if(leadMarkers[lead.id]){ map.removeLayer(leadMarkers[lead.id]); }
+  const marker = L.circleMarker([lead.lat, lead.lng], {
+    radius: 9, color: '#fff', weight: 2,
+    fillColor: leadStatusColor(lead.status), fillOpacity: 1
+  }).addTo(map);
+  const popupDiv = document.createElement('div');
+  popupDiv.innerHTML = '<b>' + (lead.name || '(Chưa có tên)') + '</b><br>' +
+    '<span class="lead-tag lead-' + lead.status + '">' + LEAD_STATUS_LABELS[lead.status] + '</span><br>' +
+    (lead.phone ? '📞 ' + lead.phone + '<br>' : '') +
+    (lead.nextVisitAt ? '<span style="color:#b3541e">🔔 Hẹn quay lại: ' + new Date(lead.nextVisitAt).toLocaleString('vi-VN') + '</span><br>' : '') +
+    '<button class="lead-popup-update" style="margin-top:4px;border:none;background:none;color:#b3541e;font-size:12px;cursor:pointer;padding:0;">✏️ Cập nhật</button>';
+  popupDiv.querySelector('.lead-popup-update').addEventListener('click', function(){
+    map.closePopup();
+    openLeadModal({ mode: 'update', lead: lead });
+  });
+  marker.bindPopup(popupDiv);
+  leadMarkers[lead.id] = marker;
+}
+
+function renderLeadFunnel(){
+  const counts = {};
+  LEAD_STATUS_ORDER.forEach(function(s){ counts[s] = 0; });
+  leadsData.forEach(function(l){ if(counts[l.status] !== undefined) counts[l.status]++; });
+  leadFunnelEl.innerHTML =
+    '<b>Phễu tuyển dụng (' + leadsData.length + ' mối)</b><br>' +
+    'Chưa gặp: <b>' + counts.chua_gap + '</b> · Đã gặp chưa quan tâm: <b>' + counts.da_gap_chua_quan_tam + '</b><br>' +
+    'Quan tâm: <b>' + counts.quan_tam + '</b> · Hẹn phỏng vấn: <b>' + counts.hen_phong_van + '</b><br>' +
+    'Đã tuyển: <b>' + counts.da_tuyen + '</b> · Từ chối: <b>' + counts.tu_choi + '</b>';
+}
+
+function renderLeadList(){
+  const now = Date.now();
+  const sorted = leadsData.slice().sort(function(a, b){
+    const aTime = a.nextVisitAt ? new Date(a.nextVisitAt).getTime() : Infinity;
+    const bTime = b.nextVisitAt ? new Date(b.nextVisitAt).getTime() : Infinity;
+    if(aTime !== bTime) return aTime - bTime;
+    return new Date(b.updatedAt) - new Date(a.updatedAt);
+  });
+  leadListEl.innerHTML = sorted.map(function(l){
+    const overdue = l.nextVisitAt && new Date(l.nextVisitAt).getTime() < now;
+    const nextVisitHtml = l.nextVisitAt
+      ? '<br><span class="lead-next-visit">🔔 Hẹn quay lại: ' + new Date(l.nextVisitAt).toLocaleString('vi-VN') + (overdue ? ' (đã tới hẹn)' : '') + '</span>'
+      : '';
+    return '<div class="lead-item">' +
+      '<span class="lead-tag lead-' + l.status + '">' + LEAD_STATUS_LABELS[l.status] + '</span>' +
+      '<b>' + (l.name || '(Chưa có tên)') + '</b>' + (l.phone ? ' · 📞 ' + l.phone : '') +
+      nextVisitHtml +
+      '<div class="lead-actions">' +
+      '<button data-id="' + l.id + '" class="lead-btn-update">Cập nhật</button>' +
+      '<button data-id="' + l.id + '" class="lead-btn-goto">Xem trên bản đồ</button>' +
+      '<button data-id="' + l.id + '" class="lead-btn-delete">Xóa</button>' +
+      '</div></div>';
+  }).join('') || '<div class="legend-note">Chưa có mối tuyển dụng nào. Bật "Bấm bản đồ để thêm mối tuyển dụng" ở trên rồi bấm vào bản đồ.</div>';
+
+  leadListEl.querySelectorAll('.lead-btn-update').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      const lead = leadsData.find(function(l){ return l.id === btn.getAttribute('data-id'); });
+      if(lead) openLeadModal({ mode: 'update', lead: lead });
+    });
+  });
+  leadListEl.querySelectorAll('.lead-btn-goto').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      const lead = leadsData.find(function(l){ return l.id === btn.getAttribute('data-id'); });
+      if(lead){ map.setView([lead.lat, lead.lng], 17); leadMarkers[lead.id] && leadMarkers[lead.id].openPopup(); }
+    });
+  });
+  leadListEl.querySelectorAll('.lead-btn-delete').forEach(function(btn){
+    btn.addEventListener('click', async function(){
+      const id = btn.getAttribute('data-id');
+      if(!confirm('Xóa mối tuyển dụng này? Không thể khôi phục.')) return;
+      try{
+        await fetch(LEADS_API + '?id=' + encodeURIComponent(id), {method: 'DELETE'});
+        await loadLeads();
+      }catch(e){
+        alert('Không xóa được do lỗi mạng, thử lại sau.');
+      }
+    });
+  });
+}
+
+async function loadLeads(){
+  try{
+    const res = await fetch(LEADS_API);
+    leadsData = await res.json();
+    const currentIds = new Set(leadsData.map(function(l){ return l.id; }));
+    Object.keys(leadMarkers).forEach(function(id){
+      if(!currentIds.has(id)){ map.removeLayer(leadMarkers[id]); delete leadMarkers[id]; }
+    });
+    leadsData.forEach(renderLeadMarker);
+    renderLeadFunnel();
+    renderLeadList();
+  }catch(e){
+    // lỗi mạng tạm thời — giữ nguyên dữ liệu/markers hiện có, thử lại ở lần tải sau
+  }
+}
+
+loadLeads();
+setInterval(loadLeads, 60000); // đồng bộ với những gì đồng nghiệp vừa cập nhật
+
+// ---------- Quản trị: xóa dữ liệu tuyển dụng ----------
+const leadAdminStatusesEl = document.getElementById('lead-admin-statuses');
+leadAdminStatusesEl.innerHTML = LEAD_STATUS_ORDER.map(function(s){
+  return '<label style="display:inline-flex;align-items:center;gap:4px;margin-right:10px;padding:2px 0;">' +
+    '<input type="checkbox" class="lead-admin-status-chk" value="' + s + '"> ' + LEAD_STATUS_LABELS[s] +
+    '</label>';
+}).join('');
+
+document.getElementById('btn-admin-wipe-leads').addEventListener('click', async function(){
+  const selectedStatuses = Array.from(document.querySelectorAll('.lead-admin-status-chk:checked')).map(function(el){ return el.value; });
+  const fromVal = adminFromEl.value;
+  const toVal = adminToEl.value;
+  const leadAdminStatusEl = document.getElementById('lead-admin-status');
+
+  let confirmMsg = 'Xóa dữ liệu tuyển dụng ';
+  confirmMsg += selectedStatuses.length ? ('theo ' + selectedStatuses.length + ' trạng thái đã chọn ') : 'của TẤT CẢ trạng thái ';
+  if(fromVal || toVal) confirmMsg += 'trong khoảng thời gian đã chọn ';
+  confirmMsg += '— không thể khôi phục. Tiếp tục?';
+  if(!confirm(confirmMsg)) return;
+
+  const key = prompt('Nhập mật khẩu quản trị:');
+  if(!key) return;
+
+  const params = new URLSearchParams();
+  params.set('admin', '1');
+  if(selectedStatuses.length) params.set('statuses', selectedStatuses.join(','));
+  if(fromVal) params.set('from', new Date(fromVal).toISOString());
+  if(toVal) params.set('to', new Date(toVal).toISOString());
+
+  leadAdminStatusEl.textContent = 'Đang xóa...';
+  try{
+    const res = await fetch(LEADS_API + '?' + params.toString(), {
+      method: 'DELETE',
+      headers: { 'x-admin-key': key }
+    });
+    if(res.status === 204){
+      leadAdminStatusEl.textContent = 'Đã xóa xong.';
+      await loadLeads();
+    } else if(res.status === 401){
+      leadAdminStatusEl.textContent = 'Sai mật khẩu quản trị — không xóa được.';
+    } else {
+      leadAdminStatusEl.textContent = 'Có lỗi xảy ra, thử lại sau.';
+    }
+  }catch(e){
+    leadAdminStatusEl.textContent = 'Lỗi mạng, thử lại sau.';
+  }
+});
 </script>
 </body>
 </html>
