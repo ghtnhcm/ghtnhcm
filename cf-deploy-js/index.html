@@ -157,12 +157,10 @@
     display:inline-block;font-size:10px;font-weight:700;
     padding:1px 6px;border-radius:10px;margin-right:5px;color:#fff;
   }
-  .lead-chua_gap{background:#6b6559;}
-  .lead-da_gap_chua_quan_tam{background:#c98f2b;}
-  .lead-quan_tam{background:#2f5d50;}
-  .lead-hen_phong_van{background:#2b6cb3;}
-  .lead-da_tuyen{background:#1e7d32;}
-  .lead-tu_choi{background:#8a2f2f;}
+  .lead-khong_tiem_nang{background:#6b6559;}
+  .lead-ung_vien_a{background:#1e7d32;}
+  .lead-ung_vien_b{background:#2b6cb3;}
+  .lead-ung_vien_c{background:#c98f2b;}
   .lead-item .lead-actions{margin-top:4px;}
   .lead-item .lead-actions button{
     border:none;background:none;color:#b3541e;font-size:11px;cursor:pointer;padding:0;margin-right:10px;
@@ -192,6 +190,17 @@
     background:var(--panel);color:var(--ink);font-size:13px;font-family:inherit;
   }
   .modal-field textarea{resize:vertical;min-height:60px;}
+  .eval-section{
+    border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:12px;background:#faf8f2;
+  }
+  .eval-section > .eval-title{font-size:12.5px;font-weight:700;color:var(--ink);margin-bottom:8px;}
+  .eval-item{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:7px;}
+  .eval-item:last-child{margin-bottom:0;}
+  .eval-item label{font-size:12.5px;color:var(--ink);flex:1;line-height:1.35;}
+  .eval-item select{width:88px;flex:none;padding:5px 6px;font-size:12.5px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink);}
+  .eval-result{margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);font-size:12.5px;font-weight:600;}
+  .eval-result.is-pass{color:#1e7d32;}
+  .eval-result.is-fail{color:#b3541e;}
   .modal-actions{display:flex;gap:8px;margin-top:16px;}
   .modal-actions button{flex:1;}
   .modal-box.wide{max-width:640px;}
@@ -363,15 +372,19 @@
         <input type="tel" id="lead-field-phone" maxlength="20" placeholder="VD: 0901 234 567">
       </div>
       <div class="modal-field">
-        <label for="lead-field-status">Trạng thái</label>
+        <label for="lead-field-status">Loại ứng viên</label>
         <select id="lead-field-status">
-          <option value="chua_gap">Chưa gặp</option>
-          <option value="da_gap_chua_quan_tam">Đã gặp, chưa quan tâm</option>
-          <option value="quan_tam">Quan tâm</option>
-          <option value="hen_phong_van">Hẹn phỏng vấn</option>
-          <option value="da_tuyen">Đã tuyển</option>
-          <option value="tu_choi">Từ chối</option>
+          <option value="" disabled selected>-- Chọn --</option>
+          <option value="khong_tiem_nang">Ứng viên không tiềm năng</option>
+          <option value="ung_vien_a">Ứng viên A (đủ 10 tiêu chí, chốt được lịch phỏng vấn)</option>
+          <option value="ung_vien_b">Ứng viên B (chưa đủ 10 tiêu chí, chốt được lịch phỏng vấn)</option>
+          <option value="ung_vien_c">Ứng viên C (đủ 10 tiêu chí nhưng còn suy nghĩ cần chăm sóc thêm)</option>
         </select>
+      </div>
+      <div class="eval-section">
+        <div class="eval-title">Phần đánh giá (10 tiêu chí)</div>
+        <div id="lead-eval-list"></div>
+        <div class="eval-result" id="lead-eval-result">Điểm: 0/10 · Chưa đánh giá</div>
       </div>
       <div class="modal-field">
         <label for="lead-field-note">Ghi chú</label>
@@ -1519,14 +1532,12 @@ renderNoteList();
 const RECRUITMENT_FORM_URL = 'https://script.google.com/macros/s/AKfycbwRJoGosQWnx5JWaZXHq_EDKjXMi1k7EhA2tyi0-AYFn2rSx-tfpFVmZH4kOGf3k0EiTA/exec';
 const LEADS_API = '/api/leads';
 const LEAD_STATUS_LABELS = {
-  chua_gap: 'Chưa gặp',
-  da_gap_chua_quan_tam: 'Đã gặp, chưa quan tâm',
-  quan_tam: 'Quan tâm',
-  hen_phong_van: 'Hẹn phỏng vấn',
-  da_tuyen: 'Đã tuyển',
-  tu_choi: 'Từ chối'
+  khong_tiem_nang: 'Ứng viên không tiềm năng',
+  ung_vien_a: 'Ứng viên A (đủ 10 tiêu chí, chốt được lịch phỏng vấn)',
+  ung_vien_b: 'Ứng viên B (chưa đủ 10 tiêu chí, chốt được lịch phỏng vấn)',
+  ung_vien_c: 'Ứng viên C (đủ 10 tiêu chí nhưng còn suy nghĩ cần chăm sóc thêm)'
 };
-const LEAD_STATUS_ORDER = ['chua_gap', 'da_gap_chua_quan_tam', 'quan_tam', 'hen_phong_van', 'da_tuyen', 'tu_choi'];
+const LEAD_STATUS_ORDER = ['khong_tiem_nang', 'ung_vien_a', 'ung_vien_b', 'ung_vien_c'];
 
 let leadMode = false;
 let leadsData = []; // mảng các mối lấy từ server
@@ -1551,6 +1562,70 @@ const leadFieldStatus = document.getElementById('lead-field-status');
 const leadFieldNote = document.getElementById('lead-field-note');
 const leadFieldNextVisit = document.getElementById('lead-field-nextvisit');
 
+function getLeadStatusValue(){
+  return leadFieldStatus.value || 'khong_tiem_nang';
+}
+
+function setLeadStatusValue(value){
+  leadFieldStatus.value = (value && LEAD_STATUS_LABELS[value]) ? value : '';
+}
+
+// ---------- Phần đánh giá (10 tiêu chí, mỗi câu "Có" = 1 điểm, đạt khi đủ 10/10) ----------
+const EVAL_QUESTIONS = [
+  'Nữ 25 - 45 tuổi',
+  'Có con nhỏ từ 2 tuổi trở lên',
+  'Có được sự ủng hộ từ gia đình khi đi làm',
+  'Đang thất nghiệp hoặc có nhu cầu tìm kiếm việc làm',
+  'Làm việc trong khoảng thời gian từ 7h30 ~ 17h30',
+  'Chấp nhận hoạt động ngoài trời và đi bộ',
+  'Khỏe mạnh, không bị các bệnh như khớp, giãn tĩnh mạch',
+  'Có khả năng đọc viết, tính tiền thừa, sử dụng được smartphone',
+  'Có phương tiện cá nhân (xe máy hoặc xe đạp điện)',
+  'Nói chuyện và trả lời lưu loát khi giao tiếp'
+];
+const EVAL_PASS_THRESHOLD = 10;
+
+const leadEvalListEl = document.getElementById('lead-eval-list');
+leadEvalListEl.innerHTML = EVAL_QUESTIONS.map(function(q, i){
+  return '<div class="eval-item"><label>' + (i + 1) + '. ' + q + '</label>' +
+    '<select class="lead-eval-select" data-idx="' + i + '">' +
+    '<option value="">-- Chọn --</option><option value="co">Có</option><option value="khong">Không</option>' +
+    '</select></div>';
+}).join('');
+const leadEvalSelects = Array.prototype.slice.call(leadEvalListEl.querySelectorAll('.lead-eval-select'));
+const leadEvalResultEl = document.getElementById('lead-eval-result');
+
+function updateLeadEvalResult(){
+  const score = leadEvalSelects.filter(function(s){ return s.value === 'co'; }).length;
+  const answeredAll = leadEvalSelects.every(function(s){ return s.value !== ''; });
+  let text = 'Điểm: ' + score + '/' + EVAL_QUESTIONS.length;
+  leadEvalResultEl.classList.remove('is-pass', 'is-fail');
+  if(!answeredAll){
+    text += ' · Chưa đánh giá xong';
+  } else if(score >= EVAL_PASS_THRESHOLD){
+    text += ' · Đạt';
+    leadEvalResultEl.classList.add('is-pass');
+  } else {
+    text += ' · Chưa đạt (cần đủ ' + EVAL_PASS_THRESHOLD + ' điểm)';
+    leadEvalResultEl.classList.add('is-fail');
+  }
+  leadEvalResultEl.textContent = text;
+  return score;
+}
+leadEvalSelects.forEach(function(s){ s.addEventListener('change', updateLeadEvalResult); });
+
+function getLeadEvalAnswers(){
+  return leadEvalSelects.map(function(s){ return s.value === 'co' ? 1 : (s.value === 'khong' ? 0 : null); });
+}
+
+function setLeadEvalAnswers(answers){
+  leadEvalSelects.forEach(function(s, i){
+    const v = answers && answers[i] !== undefined && answers[i] !== null ? (answers[i] ? 'co' : 'khong') : '';
+    s.value = v;
+  });
+  updateLeadEvalResult();
+}
+
 btnLeadMode.addEventListener('click', function(){
   leadMode = !leadMode;
   btnLeadMode.classList.toggle('active', leadMode);
@@ -1568,13 +1643,18 @@ function openLeadModal(opts){
     editingLeadId = null;
     pendingNewLeadLatLng = opts.latlng;
     leadModalTitle.textContent = 'Thêm mối tuyển dụng';
-    leadModalSubtitle.textContent = 'Điền form báo cáo tuyển dụng ngay tại điểm vừa chọn trên bản đồ.';
-    // Chế độ tạo mới: hiện form Google (nhúng ngay trong modal), ẩn các ô nhập nội bộ.
-    leadForm.style.display = 'none';
-    leadModalIframeWrap.style.display = 'block';
-    leadModalBox.classList.add('wide');
-    leadModalIframe.src = RECRUITMENT_FORM_URL;
-    leadModalIframeFallbackLink.href = RECRUITMENT_FORM_URL;
+    leadModalSubtitle.textContent = 'Điền thông tin ứng viên ngay tại điểm vừa chọn trên bản đồ.';
+    leadFieldName.value = '';
+    leadFieldPhone.value = '';
+    setLeadStatusValue('');
+    leadFieldNote.value = '';
+    leadFieldNextVisit.value = '';
+    setLeadEvalAnswers(null);
+    // Chế độ tạo mới: dùng form nhập nội bộ (Loại ứng viên), không dùng iframe form Google nữa.
+    leadForm.style.display = '';
+    leadModalIframeWrap.style.display = 'none';
+    leadModalBox.classList.remove('wide');
+    leadModalIframe.src = 'about:blank';
   } else {
     const lead = opts.lead;
     editingLeadId = lead.id;
@@ -1583,9 +1663,10 @@ function openLeadModal(opts){
     leadModalSubtitle.textContent = 'Lần ghé thăm mới sẽ được thêm vào lịch sử của mối này.';
     leadFieldName.value = lead.name || '';
     leadFieldPhone.value = lead.phone || '';
-    leadFieldStatus.value = LEAD_STATUS_LABELS[lead.status] ? lead.status : 'chua_gap';
+    setLeadStatusValue(LEAD_STATUS_LABELS[lead.status] ? lead.status : 'khong_tiem_nang');
     leadFieldNote.value = '';
     leadFieldNextVisit.value = lead.nextVisitAt ? toDatetimeLocalValue(lead.nextVisitAt) : '';
+    setLeadEvalAnswers(lead.evalAnswers || null);
     // Chế độ cập nhật mối cũ: dùng lại các ô nhập nội bộ như trước, ẩn iframe.
     leadForm.style.display = '';
     leadModalIframeWrap.style.display = 'none';
@@ -1593,7 +1674,7 @@ function openLeadModal(opts){
     leadModalIframe.src = 'about:blank';
   }
   leadModalOverlay.classList.add('open');
-  if(opts.mode !== 'create') leadFieldName.focus();
+  leadFieldName.focus();
 }
 
 function closeLeadModal(){
@@ -1620,9 +1701,14 @@ leadForm.addEventListener('submit', async function(e){
   e.preventDefault();
   const name = leadFieldName.value.trim();
   const phone = leadFieldPhone.value.trim();
-  const status = leadFieldStatus.value;
+  const status = getLeadStatusValue();
   const note = leadFieldNote.value.trim();
   const nextVisitAt = leadFieldNextVisit.value ? new Date(leadFieldNextVisit.value).toISOString() : null;
+  const evalAnswers = getLeadEvalAnswers();
+  const evalScore = updateLeadEvalResult();
+  const evalResult = evalAnswers.every(function(a){ return a !== null; })
+    ? (evalScore >= EVAL_PASS_THRESHOLD ? 'dat' : 'chua_dat')
+    : null;
 
   try{
     if(editingLeadId === null){
@@ -1633,7 +1719,8 @@ leadForm.addEventListener('submit', async function(e){
         body: JSON.stringify({
           id: id, name: name, phone: phone, status: status, note: note,
           nextVisitAt: nextVisitAt, lat: pendingNewLeadLatLng.lat, lng: pendingNewLeadLatLng.lng,
-          createdBy: myName || null
+          createdBy: myName || null,
+          evalAnswers: evalAnswers, evalScore: evalScore, evalResult: evalResult
         })
       });
     } else {
@@ -1642,7 +1729,8 @@ leadForm.addEventListener('submit', async function(e){
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
           id: editingLeadId, name: name, phone: phone, status: status, note: note,
-          nextVisitAt: nextVisitAt, visitedBy: myName || null
+          nextVisitAt: nextVisitAt, visitedBy: myName || null,
+          evalAnswers: evalAnswers, evalScore: evalScore, evalResult: evalResult
         })
       });
     }
@@ -1657,9 +1745,14 @@ leadForm.addEventListener('submit', async function(e){
 
 function leadStatusColor(status){
   return {
-    chua_gap: '#6b6559', da_gap_chua_quan_tam: '#c98f2b', quan_tam: '#2f5d50',
-    hen_phong_van: '#2b6cb3', da_tuyen: '#1e7d32', tu_choi: '#8a2f2f'
+    khong_tiem_nang: '#6b6559', ung_vien_a: '#1e7d32', ung_vien_b: '#2b6cb3', ung_vien_c: '#c98f2b'
   }[status] || '#6b6559';
+}
+
+function leadEvalScoreText(lead){
+  if(lead.evalScore === undefined || lead.evalScore === null) return '';
+  const resultLabel = lead.evalResult === 'dat' ? 'Đạt' : (lead.evalResult === 'chua_dat' ? 'Chưa đạt' : 'Chưa đánh giá xong');
+  return 'Điểm đánh giá: ' + lead.evalScore + '/' + EVAL_QUESTIONS.length + ' · ' + resultLabel;
 }
 
 function renderLeadMarker(lead){
@@ -1668,9 +1761,11 @@ function renderLeadMarker(lead){
     radius: 9, color: '#fff', weight: 2,
     fillColor: leadStatusColor(lead.status), fillOpacity: 1
   }).addTo(map);
+  const evalText = leadEvalScoreText(lead);
   const popupDiv = document.createElement('div');
   popupDiv.innerHTML = '<b>' + (lead.name || '(Chưa có tên)') + '</b><br>' +
     '<span class="lead-tag lead-' + lead.status + '">' + LEAD_STATUS_LABELS[lead.status] + '</span><br>' +
+    (evalText ? evalText + '<br>' : '') +
     (lead.phone ? '📞 ' + lead.phone + '<br>' : '') +
     (lead.nextVisitAt ? '<span style="color:#b3541e">🔔 Hẹn quay lại: ' + new Date(lead.nextVisitAt).toLocaleString('vi-VN') + '</span><br>' : '') +
     '<button class="lead-popup-update" style="margin-top:4px;border:none;background:none;color:#b3541e;font-size:12px;cursor:pointer;padding:0;">✏️ Cập nhật</button>';
@@ -1688,9 +1783,8 @@ function renderLeadFunnel(){
   leadsData.forEach(function(l){ if(counts[l.status] !== undefined) counts[l.status]++; });
   leadFunnelEl.innerHTML =
     '<b>Phễu tuyển dụng (' + leadsData.length + ' mối)</b><br>' +
-    'Chưa gặp: <b>' + counts.chua_gap + '</b> · Đã gặp chưa quan tâm: <b>' + counts.da_gap_chua_quan_tam + '</b><br>' +
-    'Quan tâm: <b>' + counts.quan_tam + '</b> · Hẹn phỏng vấn: <b>' + counts.hen_phong_van + '</b><br>' +
-    'Đã tuyển: <b>' + counts.da_tuyen + '</b> · Từ chối: <b>' + counts.tu_choi + '</b>';
+    'Không tiềm năng: <b>' + counts.khong_tiem_nang + '</b> · Ứng viên A: <b>' + counts.ung_vien_a + '</b><br>' +
+    'Ứng viên B: <b>' + counts.ung_vien_b + '</b> · Ứng viên C: <b>' + counts.ung_vien_c + '</b>';
 }
 
 function renderLeadList(){
@@ -1706,9 +1800,11 @@ function renderLeadList(){
     const nextVisitHtml = l.nextVisitAt
       ? '<br><span class="lead-next-visit">🔔 Hẹn quay lại: ' + new Date(l.nextVisitAt).toLocaleString('vi-VN') + (overdue ? ' (đã tới hẹn)' : '') + '</span>'
       : '';
+    const evalText = leadEvalScoreText(l);
     return '<div class="lead-item">' +
       '<span class="lead-tag lead-' + l.status + '">' + LEAD_STATUS_LABELS[l.status] + '</span>' +
       '<b>' + (l.name || '(Chưa có tên)') + '</b>' + (l.phone ? ' · 📞 ' + l.phone : '') +
+      (evalText ? '<br><span style="font-size:12px;color:var(--muted);">' + evalText + '</span>' : '') +
       nextVisitHtml +
       '<div class="lead-actions">' +
       '<button data-id="' + l.id + '" class="lead-btn-update">Cập nhật</button>' +
