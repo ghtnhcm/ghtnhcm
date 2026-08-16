@@ -182,8 +182,20 @@
     <button id="btn-clear-notes" class="field-btn field-btn-secondary" style="display:none;">🗑️ Xóa tất cả ghi chú</button>
 
     <div class="section-title">Quản trị</div>
-    <div class="legend-note">Xóa toàn bộ vị trí và hành trình của <b>tất cả mọi người</b> trong nhóm khỏi server. Cần mật khẩu quản trị — chỉ người giữ mật khẩu (cấu hình riêng trên server) mới xóa được, ai khác bấm cũng bị từ chối.</div>
-    <button id="btn-admin-wipe" class="field-btn field-btn-secondary" style="margin-top:6px;color:#b3541e;">🔒 Xóa TOÀN BỘ dữ liệu vị trí (Admin)</button>
+    <div class="legend-note">Xóa dữ liệu vị trí đã lưu trên server — có thể chọn xóa riêng từng người, giới hạn theo khoảng thời gian, hoặc để trống cả hai để xóa toàn bộ. Cần mật khẩu quản trị — chỉ người giữ mật khẩu mới xóa được.</div>
+    <button id="btn-admin-refresh" class="field-btn field-btn-secondary" style="margin-top:6px;">🔄 Tải danh sách người có dữ liệu</button>
+    <div id="admin-participant-list" class="legend-note"></div>
+    <div style="display:flex;gap:8px;margin-top:8px;">
+      <div style="flex:1;">
+        <label class="legend-note" style="display:block;margin-bottom:2px;">Từ ngày (tùy chọn)</label>
+        <input type="datetime-local" id="admin-from" style="width:100%;font-size:12px;padding:5px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink);">
+      </div>
+      <div style="flex:1;">
+        <label class="legend-note" style="display:block;margin-bottom:2px;">Đến ngày (tùy chọn)</label>
+        <input type="datetime-local" id="admin-to" style="width:100%;font-size:12px;padding:5px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink);">
+      </div>
+    </div>
+    <button id="btn-admin-wipe" class="field-btn field-btn-secondary" style="margin-top:8px;color:#b3541e;">🔒 Xóa dữ liệu đã chọn (Admin)</button>
     <div class="legend-note" id="admin-status"></div>
 
   </div>
@@ -811,27 +823,80 @@ function startGroupSharing(keepSessionId){
   groupPollTimer = setInterval(pollGroupLocations, GROUP_POLL_MS);
 }
 
-// Xóa toàn bộ dữ liệu (Admin) — mật khẩu chỉ được gõ tại chỗ và gửi lên
-// server để kiểm tra, KHÔNG lưu lại ở đâu trên trình duyệt (không localStorage,
-// không cookie), nên mỗi lần dùng phải nhập lại mật khẩu.
+// Xóa dữ liệu (Admin) — có thể chọn riêng từng người và/hoặc giới hạn theo
+// khoảng thời gian; để trống cả hai thì xóa toàn bộ. Mật khẩu chỉ được gõ
+// tại chỗ và gửi lên server để kiểm tra, KHÔNG lưu lại ở trình duyệt.
+const btnAdminRefresh = document.getElementById('btn-admin-refresh');
+const adminParticipantListEl = document.getElementById('admin-participant-list');
+const adminFromEl = document.getElementById('admin-from');
+const adminToEl = document.getElementById('admin-to');
 const btnAdminWipe = document.getElementById('btn-admin-wipe');
 const adminStatus = document.getElementById('admin-status');
+
+btnAdminRefresh.addEventListener('click', async function(){
+  adminParticipantListEl.textContent = 'Đang tải...';
+  try{
+    const res = await fetch(GROUP_API + '?history=1');
+    const data = await res.json();
+    const names = {};
+    (data.locations || []).forEach(function(r){ names[r.id] = r.name; });
+    Object.keys(data.trails || {}).forEach(function(id){ names[id] = data.trails[id].name; });
+    const ids = Object.keys(names);
+    if(!ids.length){
+      adminParticipantListEl.innerHTML = '(Không có ai có dữ liệu lưu trên server)';
+      return;
+    }
+    adminParticipantListEl.innerHTML = ids.map(function(id){
+      return '<label style="display:flex;align-items:center;gap:6px;padding:3px 0;">' +
+        '<input type="checkbox" class="admin-pid" value="' + id + '"> ' + (names[id] || 'Không tên') +
+        '</label>';
+    }).join('');
+  }catch(e){
+    adminParticipantListEl.textContent = 'Không tải được danh sách, thử lại.';
+  }
+});
+
 btnAdminWipe.addEventListener('click', async function(){
-  const key = prompt('Nhập mật khẩu quản trị để xóa TOÀN BỘ vị trí và hành trình của mọi người:');
+  const selectedIds = Array.from(document.querySelectorAll('.admin-pid:checked')).map(function(el){ return el.value; });
+  const fromVal = adminFromEl.value;
+  const toVal = adminToEl.value;
+
+  let confirmMsg;
+  if(selectedIds.length === 0 && !fromVal && !toVal){
+    confirmMsg = 'Chưa chọn người hay khoảng thời gian nào — thao tác này sẽ xóa TOÀN BỘ dữ liệu vị trí của TẤT CẢ mọi người. Chắc chắn tiếp tục?';
+  } else {
+    const parts = [];
+    if(selectedIds.length) parts.push(selectedIds.length + ' người đã chọn');
+    if(fromVal || toVal) parts.push('trong khoảng thời gian đã chọn');
+    confirmMsg = 'Xóa dữ liệu của ' + parts.join(', ') + '? Không thể khôi phục.';
+  }
+  if(!confirm(confirmMsg)) return;
+
+  const key = prompt('Nhập mật khẩu quản trị:');
   if(!key) return;
-  if(!confirm('Chắc chắn xóa TOÀN BỘ dữ liệu vị trí của TẤT CẢ mọi người trong nhóm? Không thể khôi phục.')) return;
+
+  const params = new URLSearchParams();
+  params.set('admin', '1');
+  if(selectedIds.length) params.set('participants', selectedIds.join(','));
+  if(fromVal) params.set('from', new Date(fromVal).toISOString());
+  if(toVal) params.set('to', new Date(toVal).toISOString());
+
   adminStatus.textContent = 'Đang xóa...';
   try{
-    const res = await fetch(GROUP_API + '?admin=1', {
+    const res = await fetch(GROUP_API + '?' + params.toString(), {
       method: 'DELETE',
       headers: { 'x-admin-key': key }
     });
     if(res.status === 204){
-      adminStatus.textContent = 'Đã xóa toàn bộ dữ liệu vị trí của cả nhóm.';
+      adminStatus.textContent = 'Đã xóa xong.';
+      adminParticipantListEl.innerHTML = '';
+      adminFromEl.value = '';
+      adminToEl.value = '';
       clearOtherMarkers();
       clearTrailLines();
       Object.keys(stopMarkers).forEach(function(id){ (stopMarkers[id] || []).forEach(function(m){ map.removeLayer(m); }); });
       for(const id in stopMarkers){ delete stopMarkers[id]; }
+      pollGroupLocations();
     } else if(res.status === 401){
       adminStatus.textContent = 'Sai mật khẩu quản trị — không xóa được.';
     } else {
