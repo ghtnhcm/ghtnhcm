@@ -7,17 +7,42 @@ const MAX_PHONE_LEN = 20;
 const MAX_NOTE_LEN = 1000;
 const MAX_ID_LEN = 64;
 
-// Trạng thái hợp lệ trong phễu tuyển dụng — khớp với danh sách hiển thị ở
-// giao diện. Giữ ở một chỗ để cả tạo mới và cập nhật (thêm lượt ghé) đều
-// dùng chung, tránh lệch dữ liệu.
+// Loại ứng viên hợp lệ — khớp với danh sách hiển thị ở giao diện. Giữ ở một
+// chỗ để cả tạo mới và cập nhật (thêm lượt ghé) đều dùng chung, tránh lệch
+// dữ liệu.
 const VALID_STATUSES = [
-  "chua_gap",
-  "da_gap_chua_quan_tam",
-  "quan_tam",
-  "hen_phong_van",
-  "da_tuyen",
-  "tu_choi",
+  "khong_tiem_nang",
+  "ung_vien_a",
+  "ung_vien_b",
+  "ung_vien_c",
 ];
+
+// Phần đánh giá 10 tiêu chí sàng lọc: mỗi câu 1 (Có) / 0 (Không), đạt khi đủ
+// điểm tuyệt đối 10/10.
+const EVAL_QUESTION_COUNT = 10;
+const EVAL_PASS_THRESHOLD = 10;
+const VALID_EVAL_RESULTS = ["dat", "chua_dat"];
+
+function cleanEvalAnswers(v) {
+  if (v === undefined) return undefined; // không gửi lên = không đổi (PATCH)
+  if (v === null) return null;
+  if (!Array.isArray(v) || v.length !== EVAL_QUESTION_COUNT) return undefined;
+  const cleaned = v.map((a) => (a === 1 || a === true ? 1 : a === 0 || a === false ? 0 : null));
+  return cleaned;
+}
+
+function cleanEvalScore(v) {
+  if (v === undefined) return undefined;
+  if (v === null) return null;
+  if (typeof v !== "number" || !Number.isFinite(v) || v < 0 || v > EVAL_QUESTION_COUNT) return undefined;
+  return Math.round(v);
+}
+
+function cleanEvalResult(v) {
+  if (v === undefined) return undefined;
+  if (v === null) return null;
+  return VALID_EVAL_RESULTS.includes(v) ? v : undefined;
+}
 
 function isNonEmptyString(v, maxLen) {
   return typeof v === "string" && v.trim().length > 0 && v.trim().length <= maxLen;
@@ -76,7 +101,7 @@ export const onRequestPost = async ({ request, env }) => {
     return Response.json({ error: "invalid JSON" }, { status: 400 });
   }
 
-  const { id, name, phone, lat, lng, status, note, nextVisitAt, createdBy } = body ?? {};
+  const { id, name, phone, lat, lng, status, note, nextVisitAt, createdBy, evalAnswers, evalScore, evalResult } = body ?? {};
 
   const isValidId = typeof id === "string" && id.length > 0 && id.length <= MAX_ID_LEN;
   const isValidLat = typeof lat === "number" && Number.isFinite(lat) && lat >= -90 && lat <= 90;
@@ -92,8 +117,12 @@ export const onRequestPost = async ({ request, env }) => {
     return Response.json({ error: "invalid nextVisitAt" }, { status: 400 });
   }
 
+  const cleanedEvalAnswers = cleanEvalAnswers(evalAnswers);
+  const cleanedEvalScore = cleanEvalScore(evalScore);
+  const cleanedEvalResult = cleanEvalResult(evalResult);
+
   const now = new Date();
-  const cleanStatus = status && VALID_STATUSES.includes(status) ? status : "chua_gap";
+  const cleanStatus = status && VALID_STATUSES.includes(status) ? status : "khong_tiem_nang";
 
   await db
     .insert(leads)
@@ -106,6 +135,9 @@ export const onRequestPost = async ({ request, env }) => {
       status: cleanStatus,
       note: cleanOptionalString(note, MAX_NOTE_LEN),
       nextVisitAt: parsedNextVisit,
+      evalAnswers: cleanedEvalAnswers ?? null,
+      evalScore: cleanedEvalScore ?? null,
+      evalResult: cleanedEvalResult ?? null,
       createdBy: cleanOptionalString(createdBy, MAX_NAME_LEN),
       createdAt: now,
       updatedAt: now,
@@ -136,7 +168,7 @@ export const onRequestPatch = async ({ request, env }) => {
     return Response.json({ error: "invalid JSON" }, { status: 400 });
   }
 
-  const { id, name, phone, status, note, nextVisitAt, visitedBy } = body ?? {};
+  const { id, name, phone, status, note, nextVisitAt, visitedBy, evalAnswers, evalScore, evalResult } = body ?? {};
   const isValidId = typeof id === "string" && id.length > 0 && id.length <= MAX_ID_LEN;
   const isValidStatus = status === undefined || status === null || VALID_STATUSES.includes(status);
   if (!isValidId || !isValidStatus) {
@@ -147,6 +179,10 @@ export const onRequestPatch = async ({ request, env }) => {
   if (parsedNextVisit === undefined && nextVisitAt !== undefined) {
     return Response.json({ error: "invalid nextVisitAt" }, { status: 400 });
   }
+
+  const cleanedEvalAnswers = cleanEvalAnswers(evalAnswers);
+  const cleanedEvalScore = cleanEvalScore(evalScore);
+  const cleanedEvalResult = cleanEvalResult(evalResult);
 
   const existing = await db.select().from(leads).where(eq(leads.id, id)).limit(1);
   if (!existing.length) {
@@ -161,6 +197,9 @@ export const onRequestPatch = async ({ request, env }) => {
   if (phone !== undefined) updateSet.phone = cleanOptionalString(phone, MAX_PHONE_LEN);
   if (note !== undefined) updateSet.note = cleanOptionalString(note, MAX_NOTE_LEN);
   if (nextVisitAt !== undefined) updateSet.nextVisitAt = parsedNextVisit;
+  if (cleanedEvalAnswers !== undefined) updateSet.evalAnswers = cleanedEvalAnswers;
+  if (cleanedEvalScore !== undefined) updateSet.evalScore = cleanedEvalScore;
+  if (cleanedEvalResult !== undefined) updateSet.evalResult = cleanedEvalResult;
 
   await db.update(leads).set(updateSet).where(eq(leads.id, id));
 
