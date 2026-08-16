@@ -29,3 +29,35 @@ export const locationHistory = pgTable("location_history", {
   lng: doublePrecision().notNull(),
   recordedAt: timestamp("recorded_at").defaultNow().notNull(),
 });
+
+// One row per recruitment "mối" (lead) placed on the map while doing
+// door-to-door recruitment. Unlike the plain notes (which only live in the
+// browser's localStorage), leads are shared server-side so the whole team
+// sees the same pipeline and nobody re-visits an address someone else
+// already covered. "status" tracks where the lead currently sits in the
+// funnel; the full history of status changes/visits lives in leadVisits.
+export const leads = pgTable("leads", {
+  id: text().primaryKey(),
+  name: text(),
+  phone: text(),
+  lat: doublePrecision().notNull(),
+  lng: doublePrecision().notNull(),
+  status: text().notNull().default("chua_gap"),
+  note: text(),
+  nextVisitAt: timestamp("next_visit_at"),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Append-only log of every visit/update made to a lead (status change,
+// note, who did it, when) so the team can see the full contact history at
+// one address instead of just the current snapshot.
+export const leadVisits = pgTable("lead_visits", {
+  id: serial().primaryKey(),
+  leadId: text("lead_id").notNull(),
+  status: text().notNull(),
+  note: text(),
+  visitedBy: text("visited_by"),
+  visitedAt: timestamp("visited_at").defaultNow().notNull(),
+});
