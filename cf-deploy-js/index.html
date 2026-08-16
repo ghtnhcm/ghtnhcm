@@ -194,6 +194,8 @@
   .modal-field textarea{resize:vertical;min-height:60px;}
   .modal-actions{display:flex;gap:8px;margin-top:16px;}
   .modal-actions button{flex:1;}
+  .modal-box.wide{max-width:640px;}
+  #lead-modal-iframe{width:100%;height:60vh;min-height:420px;border:1px solid var(--line);border-radius:8px;background:#fff;display:block;}
   /* ---------- In / Xuất bản đồ độ phân giải cao ---------- */
   #print-header{
     display:none;
@@ -205,12 +207,28 @@
   #print-header h2{margin:0 0 2px;font-size:16px;color:var(--ink);}
   #print-header .print-sub{font-size:11px;color:var(--muted);line-height:1.4;}
   @media print{
+    /* Kích thước #map khi in do JS đặt trực tiếp (siêu lấy mẫu độ phân giải) —
+       không ép width/height 100% ở đây, nếu không sẽ đè mất và làm ảnh mờ lại. */
     #sidebar, #btn-toggle-sidebar, .leaflet-control-zoom, .leaflet-control-layers,
     .modal-overlay, .group-member-label{display:none !important;}
     #app{display:block;height:auto;width:auto;}
-    #map{width:100% !important;height:100vh !important;position:relative;}
     #print-header{display:block;}
   }
+  /* Bật ngay khi chuẩn bị in (trước khi hộp thoại in mở) để bản đồ tải đủ ô
+     độ phân giải cao ở đúng bố cục sẽ in — không chỉ chờ tới @media print,
+     nếu không ảnh in ra sẽ bị nhòe do trình duyệt phóng to ảnh có sẵn. */
+  body.printing #sidebar, body.printing #btn-toggle-sidebar,
+  body.printing .leaflet-control-zoom, body.printing .leaflet-control-layers,
+  body.printing .group-member-label{display:none !important;}
+  body.printing #app{display:block;height:auto;width:auto;}
+  body.printing #map{position:relative;overflow:visible;}
+  #print-prep-overlay{
+    position:fixed;inset:0;z-index:99999;
+    background:rgba(28,35,33,0.6);
+    display:flex;align-items:center;justify-content:center;
+    color:#fff;font-size:14.5px;text-align:center;padding:24px;
+  }
+  #print-prep-overlay.hidden{display:none;}
   .modal-close-x{
     position:absolute;top:14px;right:16px;border:none;background:none;
     font-size:18px;color:var(--muted);cursor:pointer;line-height:1;
@@ -287,7 +305,7 @@
 
     <details class="field-group" open>
       <summary>🧑‍💼 Tuyển dụng (mối)</summary>
-      <div class="legend-note" style="margin-top:2px;">Trạng thái, SĐT, lịch quay lại — lưu chung cho cả nhóm.</div>
+      <div class="legend-note" style="margin-top:2px;">Bấm vào bản đồ để mở form báo cáo tuyển dụng ngay tại điểm đó — điền và gửi trực tiếp trong bảng hiện ra, không cần rời khỏi bản đồ.</div>
       <button id="btn-leadmode" class="field-btn" style="margin-top:8px;">Bấm bản đồ để thêm mối tuyển dụng</button>
       <div id="lead-funnel"></div>
       <div id="lead-list"></div>
@@ -322,10 +340,19 @@
 </div>
 
 <div class="modal-overlay" id="lead-modal-overlay">
-  <div class="modal-box">
+  <div class="modal-box" id="lead-modal-box">
     <button type="button" class="modal-close-x" id="lead-modal-close">✕</button>
     <h2 id="lead-modal-title">Thêm mối tuyển dụng</h2>
     <div class="legend-note" id="lead-modal-subtitle">Ghi lại thông tin người được tiếp cận tại điểm vừa chọn trên bản đồ.</div>
+
+    <div id="lead-modal-iframe-wrap" style="display:none;">
+      <iframe id="lead-modal-iframe" title="Form báo cáo tuyển dụng" src="about:blank"></iframe>
+      <div class="legend-note" style="margin-top:8px;">Form chưa hiển thị? <a href="#" id="lead-modal-iframe-fallback-link" target="_blank" rel="noopener">Bấm để mở ở tab mới</a>.</div>
+      <div class="modal-actions">
+        <button type="button" id="lead-modal-iframe-close" class="field-btn field-btn-secondary">Đóng</button>
+      </div>
+    </div>
+
     <form id="lead-form">
       <div class="modal-field">
         <label for="lead-field-name">Tên</label>
@@ -377,11 +404,20 @@
         </select>
       </div>
       <div class="modal-field">
-        <label for="print-field-zoom">Độ chi tiết</label>
+        <label for="print-field-zoom">Độ chi tiết (mức zoom)</label>
         <select id="print-field-zoom">
           <option value="0">Giữ nguyên độ phóng hiện tại</option>
-          <option value="1" selected>Phóng thêm 1 cấp (rõ hơn)</option>
-          <option value="2">Phóng thêm 2 cấp (thấy rõ số nhà/ngõ hẻm)</option>
+          <option value="1">Phóng thêm 1 cấp (rõ hơn)</option>
+          <option value="2" selected>Phóng thêm 2 cấp (thấy rõ số nhà/ngõ hẻm)</option>
+          <option value="3">Phóng thêm 3 cấp (rõ nhất từng con hẻm)</option>
+        </select>
+      </div>
+      <div class="modal-field">
+        <label for="print-field-quality">Độ nét ảnh khi in</label>
+        <select id="print-field-quality">
+          <option value="2">Bình thường (nhanh hơn)</option>
+          <option value="3" selected>Cao (khuyến nghị)</option>
+          <option value="4">Rất cao (chuẩn bị lâu hơn, mạng chậm có thể lỗi tải)</option>
         </select>
       </div>
       <div class="modal-field">
@@ -391,7 +427,7 @@
           <option value="portrait">Dọc</option>
         </select>
       </div>
-      <div class="legend-note">Trong hộp thoại in của trình duyệt, chọn máy in giấy để in trực tiếp, hoặc chọn "Lưu dưới dạng PDF / Save as PDF" để tải file về máy.</div>
+      <div class="legend-note">"Độ nét ảnh" càng cao thì bản đồ càng ít bị mờ khi in/lưu PDF (vì tải nhiều ô bản đồ chi tiết hơn trước khi in), nhưng cần chờ lâu hơn và cần mạng ổn định. Trong hộp thoại in của trình duyệt, chọn máy in giấy để in trực tiếp, hoặc chọn "Lưu dưới dạng PDF / Save as PDF" để tải file về máy.</div>
       <div class="modal-actions">
         <button type="button" id="print-modal-cancel" class="field-btn field-btn-secondary">Hủy</button>
         <button type="button" id="print-modal-go" class="field-btn">🖨️ In / Xuất</button>
@@ -1054,6 +1090,21 @@ const printModalGo = document.getElementById('print-modal-go');
 const printFieldScope = document.getElementById('print-field-scope');
 const printFieldZoom = document.getElementById('print-field-zoom');
 const printFieldOrientation = document.getElementById('print-field-orientation');
+const printFieldQuality = document.getElementById('print-field-quality');
+
+let printPrepOverlayEl = null;
+function showPrintPrep(msg){
+  if(!printPrepOverlayEl){
+    printPrepOverlayEl = document.createElement('div');
+    printPrepOverlayEl.id = 'print-prep-overlay';
+    document.body.appendChild(printPrepOverlayEl);
+  }
+  printPrepOverlayEl.textContent = msg;
+  printPrepOverlayEl.classList.remove('hidden');
+}
+function hidePrintPrep(){
+  if(printPrepOverlayEl) printPrepOverlayEl.classList.add('hidden');
+}
 
 function openPrintModal(){ printModal.classList.add('open'); }
 function closePrintModal(){ printModal.classList.remove('open'); }
@@ -1100,10 +1151,40 @@ function buildActivePrintLegend(){
   return items;
 }
 
+// Bản đồ nền hiện đang bật (để biết cần chờ tải xong ô nào trước khi in)
+function getActiveTileLayerForLoadEvent(){
+  let candidate = null;
+  if(map.hasLayer(layerStreetDetailed)) candidate = layerStreetDetailed;
+  else if(map.hasLayer(layerSatellite)) candidate = layerSatellite;
+  else if(map.hasLayer(layerSatelliteLabels)) candidate = layerSatelliteLabels;
+  else if(map.hasLayer(layerSimple)) candidate = layerSimple;
+  if(candidate && candidate.getLayers){ // layerSatelliteLabels là 1 layerGroup gồm 2 tile layer
+    const subs = candidate.getLayers();
+    candidate = subs && subs.length ? subs[0] : null;
+  }
+  return candidate;
+}
+
+// Đợi các ô bản đồ (tiles) của lớp nền tải xong, có giới hạn thời gian chờ tối đa
+// để tránh treo vô thời hạn nếu mạng quá chậm hoặc sự kiện 'load' không bắn ra.
+function waitForTilesLoaded(maxWaitMs, callback){
+  const tileLayer = getActiveTileLayerForLoadEvent();
+  let done = false;
+  function finish(){
+    if(done) return;
+    done = true;
+    if(tileLayer){ tileLayer.off('load', finish); }
+    callback();
+  }
+  if(tileLayer){ tileLayer.on('load', finish); }
+  setTimeout(finish, maxWaitMs);
+}
+
 function doPrintMap(){
   const scope = printFieldScope.value;
   const zoomBump = parseInt(printFieldZoom.value, 10) || 0;
   const orientation = printFieldOrientation.value;
+  const quality = parseInt(printFieldQuality.value, 10) || 3; // hệ số "siêu lấy mẫu" độ phân giải
 
   if(scope === 'mytrail' && !trailLines[myId]){
     alert('Chưa có hành trình nào của bạn trên bản đồ. Hãy bật "Chia sẻ vị trí với nhóm" hoặc di chuyển một đoạn rồi thử lại — hoặc chọn "Khung nhìn hiện tại".');
@@ -1114,9 +1195,14 @@ function doPrintMap(){
     return;
   }
 
+  const mapEl = document.getElementById('map');
   const savedCenter = map.getCenter();
   const savedZoom = map.getZoom();
+  const savedInlineWidth = mapEl.style.width;
+  const savedInlineHeight = mapEl.style.height;
   let viewChanged = false;
+
+  showPrintPrep('Đang chuẩn bị bản đồ độ nét cao để in — vui lòng đợi vài giây...');
 
   if(scope === 'mytrail'){
     try{ map.fitBounds(trailLines[myId].getBounds().pad(0.15)); viewChanged = true; }catch(e){}
@@ -1143,17 +1229,33 @@ function doPrintMap(){
     '<div class="print-sub">In lúc: ' + dateStr +
     (activeLayers.length ? ' &nbsp;•&nbsp; Lớp hiển thị: ' + activeLayers.join(', ') : '') + '</div>';
 
-  function restoreView(){
+  function restoreEverything(){
+    document.body.classList.remove('printing');
+    mapEl.style.width = savedInlineWidth;
+    mapEl.style.height = savedInlineHeight;
     if(viewChanged){ map.setView(savedCenter, savedZoom); }
-    window.removeEventListener('afterprint', restoreView);
-  }
-  window.addEventListener('afterprint', restoreView);
-
-  // Đợi bản đồ vẽ lại xong (đổi khung nhìn/zoom, tải tile mới) rồi mới mở hộp thoại in
-  setTimeout(function(){
     map.invalidateSize();
-    setTimeout(function(){ window.print(); }, 600);
-  }, 400);
+    hidePrintPrep();
+    window.removeEventListener('afterprint', restoreEverything);
+  }
+  window.addEventListener('afterprint', restoreEverything);
+
+  // ---- "Siêu lấy mẫu": phóng to hẳn khung bản đồ trên màn hình (nhiều pixel/ô
+  // bản đồ thật hơn) trước khi in, để khi trình duyệt co ảnh về khổ giấy, kết
+  // quả vẫn sắc nét thay vì bị kéo giãn mờ từ một khung nhỏ. ----
+  setTimeout(function(){
+    document.body.classList.add('printing');
+    const baseW = orientation === 'landscape' ? 1400 : 950;
+    const baseH = orientation === 'landscape' ? 950 : 1400;
+    mapEl.style.width = (baseW * quality) + 'px';
+    mapEl.style.height = (baseH * quality) + 'px';
+    map.invalidateSize();
+
+    // Đợi tile ở khung nhìn mới tải xong (có mốc thời gian chờ tối đa tăng theo độ nét)
+    waitForTilesLoaded(1500 + quality * 1200, function(){
+      window.print();
+    });
+  }, 350);
 }
 
 printModalGo.addEventListener('click', function(){
@@ -1410,9 +1512,11 @@ loadSavedNotes().forEach(function(saved){
 renderNoteList();
 
 // ---------- Tuyển dụng (leads) ----------
-// Khác với "Ghi chú" (chỉ lưu localStorage, riêng từng máy), dữ liệu tuyển
-// dụng lưu trên server dùng chung (bảng leads + lead_visits) để cả nhóm
-// theo dõi cùng 1 phễu và không ai giẫm chân đi trùng địa chỉ đã có người tới.
+// Khi bấm bản đồ để tạo mối mới, form báo cáo tuyển dụng của Google (Apps Script)
+// được nhúng trực tiếp trong hộp thoại ngay trên bản đồ (không rời trang) —
+// dữ liệu tạo mới không còn lưu vào database của trang này nữa. Các mối đã lưu
+// trước đây vẫn xem/cập nhật trạng thái được bằng form nội bộ như cũ.
+const RECRUITMENT_FORM_URL = 'https://script.google.com/macros/s/AKfycbwRJoGosQWnx5JWaZXHq_EDKjXMi1k7EhA2tyi0-AYFn2rSx-tfpFVmZH4kOGf3k0EiTA/exec';
 const LEADS_API = '/api/leads';
 const LEAD_STATUS_LABELS = {
   chua_gap: 'Chưa gặp',
@@ -1434,8 +1538,12 @@ const btnLeadMode = document.getElementById('btn-leadmode');
 const leadListEl = document.getElementById('lead-list');
 const leadFunnelEl = document.getElementById('lead-funnel');
 const leadModalOverlay = document.getElementById('lead-modal-overlay');
+const leadModalBox = document.getElementById('lead-modal-box');
 const leadModalTitle = document.getElementById('lead-modal-title');
 const leadModalSubtitle = document.getElementById('lead-modal-subtitle');
+const leadModalIframeWrap = document.getElementById('lead-modal-iframe-wrap');
+const leadModalIframe = document.getElementById('lead-modal-iframe');
+const leadModalIframeFallbackLink = document.getElementById('lead-modal-iframe-fallback-link');
 const leadForm = document.getElementById('lead-form');
 const leadFieldName = document.getElementById('lead-field-name');
 const leadFieldPhone = document.getElementById('lead-field-phone');
@@ -1460,12 +1568,13 @@ function openLeadModal(opts){
     editingLeadId = null;
     pendingNewLeadLatLng = opts.latlng;
     leadModalTitle.textContent = 'Thêm mối tuyển dụng';
-    leadModalSubtitle.textContent = 'Ghi lại thông tin người được tiếp cận tại điểm vừa chọn trên bản đồ.';
-    leadFieldName.value = '';
-    leadFieldPhone.value = '';
-    leadFieldStatus.value = 'chua_gap';
-    leadFieldNote.value = '';
-    leadFieldNextVisit.value = '';
+    leadModalSubtitle.textContent = 'Điền form báo cáo tuyển dụng ngay tại điểm vừa chọn trên bản đồ.';
+    // Chế độ tạo mới: hiện form Google (nhúng ngay trong modal), ẩn các ô nhập nội bộ.
+    leadForm.style.display = 'none';
+    leadModalIframeWrap.style.display = 'block';
+    leadModalBox.classList.add('wide');
+    leadModalIframe.src = RECRUITMENT_FORM_URL;
+    leadModalIframeFallbackLink.href = RECRUITMENT_FORM_URL;
   } else {
     const lead = opts.lead;
     editingLeadId = lead.id;
@@ -1477,23 +1586,28 @@ function openLeadModal(opts){
     leadFieldStatus.value = LEAD_STATUS_LABELS[lead.status] ? lead.status : 'chua_gap';
     leadFieldNote.value = '';
     leadFieldNextVisit.value = lead.nextVisitAt ? toDatetimeLocalValue(lead.nextVisitAt) : '';
+    // Chế độ cập nhật mối cũ: dùng lại các ô nhập nội bộ như trước, ẩn iframe.
+    leadForm.style.display = '';
+    leadModalIframeWrap.style.display = 'none';
+    leadModalBox.classList.remove('wide');
+    leadModalIframe.src = 'about:blank';
   }
   leadModalOverlay.classList.add('open');
-  leadFieldName.focus();
+  if(opts.mode !== 'create') leadFieldName.focus();
 }
 
 function closeLeadModal(){
   leadModalOverlay.classList.remove('open');
-  if(editingLeadId === null && pendingNewLeadLatLng){
-    // Hủy khi đang tạo mới — không để lại điểm ma trên bản đồ.
-  }
+  leadModalIframe.src = 'about:blank';
   pendingNewLeadLatLng = null;
   editingLeadId = null;
 }
 
 document.getElementById('lead-modal-close').addEventListener('click', closeLeadModal);
 document.getElementById('lead-modal-cancel').addEventListener('click', closeLeadModal);
+document.getElementById('lead-modal-iframe-close').addEventListener('click', closeLeadModal);
 leadModalOverlay.addEventListener('click', function(e){ if(e.target === leadModalOverlay) closeLeadModal(); });
+
 
 function toDatetimeLocalValue(iso){
   const d = new Date(iso);
