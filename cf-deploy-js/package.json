@@ -1,0 +1,19 @@
+{
+  "name": "ghtn-hcm",
+  "version": "1.0.0",
+  "description": "Khao sat Cu Chi map",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^0.10.4",
+    "drizzle-orm": "^0.36.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250101.0",
+    "drizzle-kit": "^0.28.0"
+  }
+}
