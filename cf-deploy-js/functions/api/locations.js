@@ -145,9 +145,33 @@ export const onRequestGet = async ({ request, env }) => {
 
 export const onRequestDelete = async ({ request, env }) => {
   const db = getDb(env.DATABASE_URL);
-  const id = new URL(request.url).searchParams.get("id");
+  const url = new URL(request.url);
+
+  // Admin-only: wipe EVERYONE's data (every live pin + all trail history).
+  // Gated by a secret key that lives only on the server (env.ADMIN_KEY,
+  // configured via `wrangler secret put ADMIN_KEY` — never checked into
+  // the repo or shipped in the app's JS). Anyone can see this button in the
+  // UI, but the request is rejected server-side unless the correct key is
+  // supplied, so only whoever holds that key can actually delete anything.
+  if (url.searchParams.get("admin") === "1") {
+    const providedKey = request.headers.get("x-admin-key") || "";
+    if (!env.ADMIN_KEY || providedKey !== env.ADMIN_KEY) {
+      return Response.json({ error: "unauthorized" }, { status: 401 });
+    }
+    await db.delete(locationHistory);
+    await db.delete(liveLocations);
+    return new Response(null, { status: 204 });
+  }
+
+  const id = url.searchParams.get("id");
   if (id) {
     await db.delete(liveLocations).where(eq(liveLocations.id, id));
+    // history=1 also wipes this participant's saved trail (location_history),
+    // not just their live dot — an explicit, separate opt-in since it's
+    // permanent and removes their route from everyone's map.
+    if (url.searchParams.get("history") === "1") {
+      await db.delete(locationHistory).where(eq(locationHistory.participantId, id));
+    }
   }
   return new Response(null, { status: 204 });
 };
