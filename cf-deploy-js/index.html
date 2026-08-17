@@ -324,13 +324,8 @@
 
     <div class="section-title">Khảo sát mở văn phòng</div>
 
-    <details class="field-group" open>
-      <summary>🏪 Siêu thị / tạp hóa &amp; bệnh viện (OpenStreetMap)</summary>
-      <div class="legend-note" style="margin-top:2px;">Dữ liệu thật lấy từ OpenStreetMap (miễn phí, không cần API key), phủ toàn TP.HCM (gồm cả Củ Chi). Mỗi loại có icon/màu riêng để phân biệt (🛒 siêu thị, 🏪 tiện lợi, 🥬 tạp hóa, 🏥 bệnh viện, ⚕️ phòng khám, 💊 nhà thuốc...). Bấm vào từng điểm để xem tên, địa chỉ. Điểm gần nhau sẽ tự gom cụm — bấm vào cụm hoặc phóng to để tách ra.</div>
-      <button id="btn-load-poi" class="field-btn" style="margin-top:8px;">📥 Tải siêu thị/tạp hóa &amp; bệnh viện từ OpenStreetMap</button>
-      <div class="legend-note" id="poi-status"></div>
-      <div id="poi-rows"></div>
-    </details>
+    <div class="legend-note" style="margin:0 0 4px;">Dữ liệu thật lấy từ OpenStreetMap (miễn phí, không cần API key), phủ toàn TP.HCM (gồm cả Củ Chi). Mở từng mục dưới đây và bấm nút tải riêng — chỉ tải đúng loại bạn cần, đỡ chờ lâu.</div>
+    <div id="poi-groups"></div>
 
     <details class="field-group">
       <summary>🏘️ Mật độ dân cư (đánh dấu tay)</summary>
@@ -1917,22 +1912,23 @@ async function loadLeads(){
 loadLeads();
 setInterval(loadLeads, 60000); // đồng bộ với những gì đồng nghiệp vừa cập nhật
 
-// ---------- Khảo sát mở văn phòng: Siêu thị/Tạp hóa & Bệnh viện (OpenStreetMap, qua Overpass API) ----------
+// ---------- Khảo sát mở văn phòng: Tiện ích xung quanh (OpenStreetMap, qua Overpass API) ----------
 // Dữ liệu thật, miễn phí, không cần API key — lấy trực tiếp từ trình duyệt người dùng,
 // phủ toàn bộ TP.HCM (kể cả Củ Chi) theo khung tọa độ (bbox) cố định của thành phố.
+// Mỗi danh mục là 1 mục xổ xuống (accordion) riêng, có nút tải + trạng thái riêng —
+// mở mục nào, bấm tải mục đó, không bắt tải hết 1 lần cho đỡ chờ lâu / tốn dữ liệu.
 const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
 // Bbox toàn TP.HCM (south, west, north, east) — có chừa biên dư để không sót khu ven như Củ Chi, Cần Giờ, Nhà Bè.
 const HCM_BBOX = '10.30,106.30,11.20,107.10';
-const btnLoadPoi = document.getElementById('btn-load-poi');
-const poiStatusEl = document.getElementById('poi-status');
-const poiRowsEl = document.getElementById('poi-rows');
+const poiGroupsEl = document.getElementById('poi-groups');
 
-// Mỗi danh mục lớn (siêu thị/tạp hóa, y tế) có nhiều phân loại con — mỗi phân
-// loại con có icon + màu riêng để phân biệt rõ trên bản đồ, thay vì 1 màu chung.
+// Mỗi danh mục lớn có thể có nhiều phân loại con — mỗi phân loại con có icon +
+// màu riêng để phân biệt rõ trên bản đồ, thay vì 1 màu chung.
 const POI_DEFS = [
   {
     key: 'poi-cho',
     label: 'Siêu thị / Tạp hóa',
+    summaryIcon: '🛒',
     tagKey: 'shop',
     subtypes: {
       supermarket:      {label:'Siêu thị',            icon:'🛒', color:'#1e5fae'},
@@ -1944,12 +1940,31 @@ const POI_DEFS = [
   {
     key: 'poi-yte',
     label: 'Bệnh viện / Phòng khám',
+    summaryIcon: '🏥',
     tagKey: 'amenity',
     subtypes: {
       hospital: {label:'Bệnh viện',      icon:'🏥', color:'#c92a2a'},
       clinic:   {label:'Phòng khám',     icon:'⚕️', color:'#d9480f'},
       doctors:  {label:'Bác sĩ/phòng mạch', icon:'👨‍⚕️', color:'#e8590c'},
       pharmacy: {label:'Nhà thuốc',      icon:'💊', color:'#9c36b5'}
+    }
+  },
+  {
+    key: 'poi-market',
+    label: 'Chợ truyền thống',
+    summaryIcon: '🧺',
+    tagKey: 'amenity',
+    subtypes: {
+      marketplace: {label:'Chợ', icon:'🧺', color:'#d9822b'}
+    }
+  },
+  {
+    key: 'poi-chungcu',
+    label: 'Chung cư',
+    summaryIcon: '🏢',
+    tagKey: 'building',
+    subtypes: {
+      apartments: {label:'Chung cư', icon:'🏢', color:'#4a5568'}
     }
   }
 ];
@@ -1964,18 +1979,34 @@ function makePoiDivIcon(sub){
   });
 }
 
-async function loadPoiFromOSM(){
-  btnLoadPoi.disabled = true;
-  poiStatusEl.textContent = 'Đang tải dữ liệu từ OpenStreetMap cho toàn TP.HCM... (dữ liệu lớn, có thể mất 30-60 giây)';
-  poiRowsEl.innerHTML = '';
+// Dựng sẵn 1 mục xổ xuống (accordion) cho mỗi danh mục, kèm nút tải + vùng
+// trạng thái + vùng chú giải riêng của chính danh mục đó.
+POI_DEFS.forEach(function(def){
+  const details = document.createElement('details');
+  details.className = 'field-group';
+  details.innerHTML =
+    '<summary>' + def.summaryIcon + ' ' + def.label + '</summary>' +
+    '<button id="btn-load-' + def.key + '" class="field-btn" style="margin-top:8px;">📥 Tải ' + def.label.toLowerCase() + ' từ OpenStreetMap</button>' +
+    '<div class="legend-note" id="poi-status-' + def.key + '"></div>' +
+    '<div id="poi-rows-' + def.key + '"></div>';
+  poiGroupsEl.appendChild(details);
+
+  const btn = details.querySelector('#btn-load-' + def.key);
+  const statusEl = details.querySelector('#poi-status-' + def.key);
+  const rowsEl = details.querySelector('#poi-rows-' + def.key);
+
+  btn.addEventListener('click', function(){ loadPoiFromOSM(def, btn, statusEl, rowsEl); });
+});
+
+async function loadPoiFromOSM(def, btn, statusEl, rowsEl){
+  btn.disabled = true;
+  statusEl.textContent = 'Đang tải "' + def.label + '" từ OpenStreetMap cho toàn TP.HCM... (có thể mất 15-40 giây)';
+  rowsEl.innerHTML = '';
 
   try{
-    const parts = POI_DEFS.map(function(def){
-      const values = Object.keys(def.subtypes).join('|');
-      const filter = '["' + def.tagKey + '"~"^(' + values + ')$"]';
-      return 'node' + filter + '(' + HCM_BBOX + ');way' + filter + '(' + HCM_BBOX + ');';
-    }).join('');
-    const ql = '[out:json][timeout:60];(' + parts + ');out center tags;';
+    const values = Object.keys(def.subtypes).join('|');
+    const filter = '["' + def.tagKey + '"~"^(' + values + ')$"]';
+    const ql = '[out:json][timeout:40];(node' + filter + '(' + HCM_BBOX + ');way' + filter + '(' + HCM_BBOX + '););out center tags;';
 
     const res = await fetch(OVERPASS_URL, {
       method: 'POST',
@@ -1985,91 +2016,88 @@ async function loadPoiFromOSM(){
     if(!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
 
-    POI_DEFS.forEach(function(def){
-      if(layerGroups[def.key]){ map.removeLayer(layerGroups[def.key]); }
-      // Gom cụm (cluster) vì phủ toàn TP.HCM có thể lên tới hàng ngàn điểm —
-      // không cluster sẽ rất rối mắt và làm chậm trình duyệt.
-      const group = L.markerClusterGroup({
-        maxClusterRadius: 50,
-        spiderfyOnMaxZoom: true,
-        disableClusteringAtZoom: 17
-      });
-      const subtypeCounts = {};
-      Object.keys(def.subtypes).forEach(function(k){ subtypeCounts[k] = 0; });
+    if(layerGroups[def.key]){ map.removeLayer(layerGroups[def.key]); }
+    // Gom cụm (cluster) vì phủ toàn TP.HCM có thể lên tới hàng ngàn điểm —
+    // không cluster sẽ rất rối mắt và làm chậm trình duyệt.
+    const group = L.markerClusterGroup({
+      maxClusterRadius: 50,
+      spiderfyOnMaxZoom: true,
+      disableClusteringAtZoom: 17
+    });
+    const subtypeCounts = {};
+    Object.keys(def.subtypes).forEach(function(k){ subtypeCounts[k] = 0; });
 
-      data.elements.forEach(function(el){
-        const tags = el.tags || {};
-        const tagVal = tags[def.tagKey];
-        const sub = def.subtypes[tagVal];
-        if(!sub) return;
+    data.elements.forEach(function(el){
+      const tags = el.tags || {};
+      const tagVal = tags[def.tagKey];
+      const sub = def.subtypes[tagVal];
+      if(!sub) return;
 
-        const lat = el.type === 'node' ? el.lat : (el.center && el.center.lat);
-        const lng = el.type === 'node' ? el.lon : (el.center && el.center.lon);
-        if(lat === undefined || lng === undefined) return;
+      const lat = el.type === 'node' ? el.lat : (el.center && el.center.lat);
+      const lng = el.type === 'node' ? el.lon : (el.center && el.center.lon);
+      if(lat === undefined || lng === undefined) return;
 
-        subtypeCounts[tagVal]++;
-        const name = tags.name || tags['name:vi'] || '(chưa có tên trên OSM)';
-        const addr = (tags['addr:housenumber'] ? tags['addr:housenumber'] + ' ' : '') +
-          (tags['addr:street'] || '') + (tags['addr:ward'] ? ', ' + tags['addr:ward'] : '') +
-          (tags['addr:district'] ? ', ' + tags['addr:district'] : '');
+      subtypeCounts[tagVal]++;
+      const name = tags.name || tags['name:vi'] || '(chưa có tên trên OSM)';
+      const addr = (tags['addr:housenumber'] ? tags['addr:housenumber'] + ' ' : '') +
+        (tags['addr:street'] || '') + (tags['addr:ward'] ? ', ' + tags['addr:ward'] : '') +
+        (tags['addr:district'] ? ', ' + tags['addr:district'] : '');
 
-        const marker = L.marker([lat, lng], {icon: makePoiDivIcon(sub)});
-        marker.bindPopup(
-          '<b>' + sub.icon + ' ' + name + '</b><br>' +
-          '<span class="lead-tag" style="background:' + sub.color + ';">' + sub.label + '</span>' +
-          (addr.trim() ? '<br><span style="color:var(--muted);font-size:12px;">📍 ' + addr.trim() + '</span>' : '') +
-          (tags.phone ? '<br>📞 ' + tags.phone : '') +
-          (tags.opening_hours ? '<br>🕒 ' + tags.opening_hours : '')
-        );
-        marker.bindTooltip(sub.icon + ' ' + name, {sticky:true, direction:'top', opacity:0.95});
-        group.addLayer(marker);
-      });
-
-      group.addTo(map);
-      layerGroups[def.key] = group;
-      const totalCount = Object.values(subtypeCounts).reduce(function(a,b){ return a+b; }, 0);
-
-      const row = document.createElement('div');
-      row.className = 'layer-row';
-      row.innerHTML = '<input type="checkbox" id="chk-' + def.key + '" checked>' +
-        '<span class="swatch" style="background:transparent;border-color:#888;border-width:2px;"></span>' +
-        '<span class="layer-label"><b>' + def.label + '</b></span>' +
-        '<span class="layer-count">(' + totalCount + ')</span>';
-      row.addEventListener('click', function(e){
-        if(e.target.tagName !== 'INPUT'){
-          const chk = row.querySelector('input');
-          chk.checked = !chk.checked;
-          applyLayer(def.key, chk.checked);
-        }
-      });
-      row.querySelector('input').addEventListener('change', function(e){
-        applyLayer(def.key, e.target.checked);
-      });
-      poiRowsEl.appendChild(row);
-
-      // Chú giải icon/màu từng phân loại con, kèm số lượng — để phân biệt rõ trên bản đồ
-      const legend = document.createElement('div');
-      legend.style.margin = '2px 0 10px 26px';
-      Object.keys(def.subtypes).forEach(function(k){
-        if(!subtypeCounts[k]) return;
-        const sub = def.subtypes[k];
-        const item = document.createElement('div');
-        item.style.cssText = 'display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--muted);padding:1px 0;';
-        item.innerHTML = '<span style="width:18px;height:18px;border-radius:50%;background:' + sub.color + ';flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:10px;">' + sub.icon + '</span>' +
-          sub.label + ' <span style="color:#bdb8ab;">(' + subtypeCounts[k] + ')</span>';
-        legend.appendChild(item);
-      });
-      poiRowsEl.appendChild(legend);
+      const marker = L.marker([lat, lng], {icon: makePoiDivIcon(sub)});
+      marker.bindPopup(
+        '<b>' + sub.icon + ' ' + name + '</b><br>' +
+        '<span class="lead-tag" style="background:' + sub.color + ';">' + sub.label + '</span>' +
+        (addr.trim() ? '<br><span style="color:var(--muted);font-size:12px;">📍 ' + addr.trim() + '</span>' : '') +
+        (tags.phone ? '<br>📞 ' + tags.phone : '') +
+        (tags.opening_hours ? '<br>🕒 ' + tags.opening_hours : '')
+      );
+      marker.bindTooltip(sub.icon + ' ' + name, {sticky:true, direction:'top', opacity:0.95});
+      group.addLayer(marker);
     });
 
-    poiStatusEl.textContent = 'Đã tải xong dữ liệu toàn TP.HCM từ OpenStreetMap (bấm nút này lại bất kỳ lúc nào để lấy dữ liệu mới nhất).';
+    group.addTo(map);
+    layerGroups[def.key] = group;
+    const totalCount = Object.values(subtypeCounts).reduce(function(a,b){ return a+b; }, 0);
+
+    const row = document.createElement('div');
+    row.className = 'layer-row';
+    row.innerHTML = '<input type="checkbox" id="chk-' + def.key + '" checked>' +
+      '<span class="swatch" style="background:transparent;border-color:#888;border-width:2px;"></span>' +
+      '<span class="layer-label"><b>' + def.label + '</b></span>' +
+      '<span class="layer-count">(' + totalCount + ')</span>';
+    row.addEventListener('click', function(e){
+      if(e.target.tagName !== 'INPUT'){
+        const chk = row.querySelector('input');
+        chk.checked = !chk.checked;
+        applyLayer(def.key, chk.checked);
+      }
+    });
+    row.querySelector('input').addEventListener('change', function(e){
+      applyLayer(def.key, e.target.checked);
+    });
+    rowsEl.appendChild(row);
+
+    // Chú giải icon/màu từng phân loại con, kèm số lượng — để phân biệt rõ trên bản đồ
+    const legend = document.createElement('div');
+    legend.style.margin = '2px 0 10px 26px';
+    Object.keys(def.subtypes).forEach(function(k){
+      if(!subtypeCounts[k]) return;
+      const sub = def.subtypes[k];
+      const item = document.createElement('div');
+      item.style.cssText = 'display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--muted);padding:1px 0;';
+      item.innerHTML = '<span style="width:18px;height:18px;border-radius:50%;background:' + sub.color + ';flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:10px;">' + sub.icon + '</span>' +
+        sub.label + ' <span style="color:#bdb8ab;">(' + subtypeCounts[k] + ')</span>';
+      legend.appendChild(item);
+    });
+    rowsEl.appendChild(legend);
+
+    statusEl.textContent = 'Đã tải xong "' + def.label + '" (bấm nút này lại bất kỳ lúc nào để lấy dữ liệu mới nhất).';
   }catch(e){
-    poiStatusEl.textContent = 'Không tải được dữ liệu (mạng chậm, dữ liệu quá lớn, hoặc máy chủ OpenStreetMap đang bận) — thử bấm lại sau ít phút.';
+    statusEl.textContent = 'Không tải được dữ liệu (mạng chậm, dữ liệu quá lớn, hoặc máy chủ OpenStreetMap đang bận) — thử bấm lại sau ít phút.';
   }finally{
-    btnLoadPoi.disabled = false;
+    btn.disabled = false;
   }
 }
-btnLoadPoi.addEventListener('click', loadPoiFromOSM);
 
 // ---------- Khảo sát mở văn phòng: Mật độ dân cư (đánh dấu tay, lưu server) ----------
 const DENSITY_API = '/api/density';
