@@ -61,6 +61,20 @@ export const leads = pgTable("leads", {
 // Append-only log of every visit/update made to a lead (status change,
 // note, who did it, when) so the team can see the full contact history at
 // one address instead of just the current snapshot.
+// Điểm đánh dấu mật độ dân cư (khảo sát mở văn phòng). Không có nguồn dữ
+// liệu tự động cho mật độ dân cư (khác với địa điểm kinh doanh lấy được từ
+// OpenStreetMap), nên đây là điểm do người khảo sát tự bấm và chọn mức độ
+// dựa trên quan sát thực địa.
+export const densityPoints = pgTable("density_points", {
+  id: text().primaryKey(),
+  level: text().notNull(), // 'cao' | 'trung_binh' | 'thap'
+  note: text(),
+  lat: doublePrecision().notNull(),
+  lng: doublePrecision().notNull(),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const leadVisits = pgTable("lead_visits", {
   id: serial().primaryKey(),
   leadId: text("lead_id").notNull(),
