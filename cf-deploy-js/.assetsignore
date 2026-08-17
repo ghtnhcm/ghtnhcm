@@ -8,3 +8,4 @@ package-lock.json
 bun.lock*
 README.md
 .gitignore
+node_modules/**
