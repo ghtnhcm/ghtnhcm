@@ -313,7 +313,7 @@
     </details>
 
     <details class="field-group" open>
-      <summary>🧑‍💼 Tuyển dụng (mối)</summary>
+      <summary>🧑‍💼 Báo cáo tuyển dụng</summary>
       <div class="legend-note" style="margin-top:2px;">Bấm vào bản đồ để mở form báo cáo tuyển dụng ngay tại điểm đó — điền và gửi trực tiếp trong bảng hiện ra, không cần rời khỏi bản đồ.</div>
       <button id="btn-leadmode" class="field-btn" style="margin-top:8px;">Bấm bản đồ để thêm mối tuyển dụng</button>
       <div id="lead-funnel"></div>
@@ -391,7 +391,7 @@
         <textarea id="lead-field-note" maxlength="1000" placeholder="Chi tiết trao đổi, nhu cầu, lưu ý..."></textarea>
       </div>
       <div class="modal-field">
-        <label for="lead-field-nextvisit">Hẹn quay lại (tùy chọn)</label>
+        <label for="lead-field-nextvisit">Hẹn phỏng vấn (tùy chọn)</label>
         <input type="datetime-local" id="lead-field-nextvisit">
       </div>
       <div class="modal-actions">
@@ -1056,7 +1056,6 @@ async function pollGroupLocations(){
     drawTrails(data.trails);
     const total = seenIds.size + 1; // +1 = chính mình
     groupStatus.textContent = total <= 1
-      ? 'Đang chia sẻ — chưa có ai khác trong nhóm bật cùng lúc. Hành trình của bạn đang được ghi lại trên bản đồ.'
       : 'Đang chia sẻ — ' + total + ' người đang online trong nhóm. Hành trình của từng người được vẽ trên bản đồ.';
   }catch(e){
     // lỗi mạng tạm thời khi poll, giữ nguyên trạng thái marker hiện có
