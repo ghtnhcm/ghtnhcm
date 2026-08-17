@@ -757,42 +757,49 @@ if(DATA.hcm){
     });
     layerGroups[key] = group; // tắt sẵn (không add vào map)
 
-    const row = document.createElement('div');
-    row.className = 'layer-row';
-    row.innerHTML = '<input type="checkbox" id="chk-' + key + '">' +
-      '<span class="swatch" style="background:transparent;border-color:#888;border-width:2px;"></span>' +
-      '<span class="layer-label"><b>' + def.label + '</b></span>' +
-      '<span class="layer-count" id="cnt-' + key + '">(' + items.length + ')</span>';
-    row.addEventListener('click', function(e){
-      if(e.target.tagName !== 'INPUT'){
-        const chk = row.querySelector('input');
-        chk.checked = !chk.checked;
-        applyLayer(key, chk.checked);
-      }
-    });
-    row.querySelector('input').addEventListener('change', function(e){
-      applyLayer(key, e.target.checked);
-    });
-    giaidoanRows.appendChild(row);
+    // Nhóm cuối cùng (grp7 - "Khác, chưa phân nhóm") vẫn được tạo/phân loại và
+    // tính vào thống kê như bình thường (giữ đúng logic classifyFeature),
+    // chỉ KHÔNG hiển thị checkbox/chú giải của nó trên sidebar để đỡ rối mắt.
+    const isLastFallbackGroup = (idx === GROUP_DEFS.length - 1);
 
-    // chú giải màu từng cửa hàng trong nhóm
-    const legend = document.createElement('div');
-    legend.style.margin = '2px 0 10px 26px';
-    def.stores.forEach(function(store, i){
-      if(!storeCounts[i]) return;
-      const item = document.createElement('div');
-      item.style.cssText = 'display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--muted);padding:1px 0;';
-      item.innerHTML = '<span style="width:11px;height:11px;border-radius:3px;background:' + store.color + ';flex-shrink:0;"></span>' +
-        store.name + ' <span style="color:#bdb8ab;">(' + storeCounts[i] + ')</span>';
-      legend.appendChild(item);
-    });
-    if(khacCount){
-      const item = document.createElement('div');
-      item.style.cssText = 'display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--muted);padding:1px 0;';
-      item.innerHTML = '<span style="width:11px;height:11px;border-radius:3px;background:#999;flex-shrink:0;"></span>Khác (' + khacCount + ')';
-      legend.appendChild(item);
+    if(!isLastFallbackGroup){
+      const row = document.createElement('div');
+      row.className = 'layer-row';
+      row.innerHTML = '<input type="checkbox" id="chk-' + key + '">' +
+        '<span class="swatch" style="background:transparent;border-color:#888;border-width:2px;"></span>' +
+        '<span class="layer-label"><b>' + def.label + '</b></span>' +
+        '<span class="layer-count" id="cnt-' + key + '">(' + items.length + ')</span>';
+      row.addEventListener('click', function(e){
+        if(e.target.tagName !== 'INPUT'){
+          const chk = row.querySelector('input');
+          chk.checked = !chk.checked;
+          applyLayer(key, chk.checked);
+        }
+      });
+      row.querySelector('input').addEventListener('change', function(e){
+        applyLayer(key, e.target.checked);
+      });
+      giaidoanRows.appendChild(row);
+
+      // chú giải màu từng cửa hàng trong nhóm
+      const legend = document.createElement('div');
+      legend.style.margin = '2px 0 10px 26px';
+      def.stores.forEach(function(store, i){
+        if(!storeCounts[i]) return;
+        const item = document.createElement('div');
+        item.style.cssText = 'display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--muted);padding:1px 0;';
+        item.innerHTML = '<span style="width:11px;height:11px;border-radius:3px;background:' + store.color + ';flex-shrink:0;"></span>' +
+          store.name + ' <span style="color:#bdb8ab;">(' + storeCounts[i] + ')</span>';
+        legend.appendChild(item);
+      });
+      if(khacCount){
+        const item = document.createElement('div');
+        item.style.cssText = 'display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--muted);padding:1px 0;';
+        item.innerHTML = '<span style="width:11px;height:11px;border-radius:3px;background:#999;flex-shrink:0;"></span>Khác (' + khacCount + ')';
+        legend.appendChild(item);
+      }
+      giaidoanRows.appendChild(legend);
     }
-    giaidoanRows.appendChild(legend);
 
     window.__groupTotalCount = (window.__groupTotalCount || 0) + items.length;
     window.__groupsShown = (window.__groupsShown || 0) + 1;
@@ -2147,7 +2154,7 @@ densityForm.addEventListener('submit', async function(e){
   const note = densityFieldNote.value.trim();
   const id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : ('density-' + Math.random().toString(36).slice(2) + Date.now().toString(36));
   try{
-    await fetch(DENSITY_API, {
+    const res = await fetch(DENSITY_API, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
@@ -2156,6 +2163,12 @@ densityForm.addEventListener('submit', async function(e){
         createdBy: myName || null
       })
     });
+    if(!res.ok){
+      let detail = '';
+      try{ const j = await res.json(); detail = j && j.error ? j.error : ''; }catch(_e){}
+      alert('Lưu thất bại (mã lỗi ' + res.status + (detail ? ': ' + detail : '') + '). Điểm CHƯA được lưu — hộp thoại sẽ giữ nguyên để bạn thử lại.');
+      return; // giữ nguyên modal + dữ liệu đã nhập, không đóng, không gọi loadDensity()
+    }
     closeDensityModal();
     await loadDensity();
   }catch(err){
@@ -2194,6 +2207,10 @@ function renderDensityList(){
 async function loadDensity(){
   try{
     const res = await fetch(DENSITY_API);
+    if(!res.ok){
+      console.error('Tải mật độ dân cư thất bại, mã lỗi', res.status);
+      return; // giữ nguyên dữ liệu/markers hiện có, không xóa mất những gì đang hiển thị
+    }
     densityData = await res.json();
     const currentIds = new Set(densityData.map(function(p){ return p.id; }));
     Object.keys(densityMarkers).forEach(function(id){
@@ -2202,6 +2219,7 @@ async function loadDensity(){
     densityData.forEach(renderDensityMarker);
     renderDensityList();
   }catch(e){
+    console.error('Lỗi mạng khi tải mật độ dân cư:', e);
     // lỗi mạng tạm thời — giữ nguyên dữ liệu/markers hiện có
   }
 }
