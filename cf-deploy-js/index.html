@@ -885,7 +885,19 @@ function releaseWakeLock(){
   if(wakeLock){ wakeLock.release().catch(function(){}); wakeLock = null; }
 }
 document.addEventListener('visibilitychange', function(){
-  if(document.visibilityState === 'visible' && groupSharing){ requestWakeLock(); }
+  if(document.visibilityState === 'visible' && groupSharing){
+    requestWakeLock();
+    // Khi tắt màn hình, hệ điều hành có thể âm thầm dừng GPS watch và bộ đếm
+    // gửi vị trí mà KHÔNG tải lại trang (nên đoạn khôi phục phiên lúc tải trang
+    // không chạy). Ở đây tự kiểm tra và khởi động lại nếu phát hiện bị dừng,
+    // để việc ghi hành trình tự tiếp tục ngay khi mở màn hình lên, không cần
+    // bấm lại nút nào.
+    if(watchId === null){ btnLocate.click(); }
+    if(!groupPollTimer){
+      groupPollTimer = setInterval(pollGroupLocations, GROUP_POLL_MS);
+      pollGroupLocations();
+    }
+  }
 });
 
 // ---------- Đo khoảng cách / thời gian / điểm nghỉ trên mỗi hành trình ----------
