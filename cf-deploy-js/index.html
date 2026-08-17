@@ -320,6 +320,23 @@
       <div id="lead-list"></div>
     </details>
 
+    <div class="section-title">Khảo sát mở văn phòng</div>
+
+    <details class="field-group" open>
+      <summary>🏪 Siêu thị / tạp hóa &amp; bệnh viện (OpenStreetMap)</summary>
+      <div class="legend-note" style="margin-top:2px;">Dữ liệu thật lấy từ OpenStreetMap (miễn phí, không cần API key), giới hạn trong ranh giới Củ Chi. Bấm nút bên dưới để tải — chỉ cần tải lại nếu bạn muốn cập nhật dữ liệu mới nhất.</div>
+      <button id="btn-load-poi" class="field-btn" style="margin-top:8px;">📥 Tải siêu thị/tạp hóa &amp; bệnh viện từ OpenStreetMap</button>
+      <div class="legend-note" id="poi-status"></div>
+      <div id="poi-rows"></div>
+    </details>
+
+    <details class="field-group">
+      <summary>🏘️ Mật độ dân cư (đánh dấu tay)</summary>
+      <div class="legend-note" style="margin-top:2px;">Không có nguồn tự động cho mật độ dân cư — bấm vào bản đồ để tự đánh dấu mức độ tại điểm đó, dựa trên quan sát thực địa.</div>
+      <button id="btn-densitymode" class="field-btn" style="margin-top:8px;">Bấm bản đồ để đánh dấu mật độ dân cư</button>
+      <div id="density-list"></div>
+    </details>
+
     <div class="section-title">Quản trị</div>
     <div class="legend-note">Xóa dữ liệu vị trí đã lưu trên server — có thể chọn xóa riêng từng người, giới hạn theo khoảng thời gian, hoặc để trống cả hai để xóa toàn bộ. Cần mật khẩu quản trị — chỉ người giữ mật khẩu mới xóa được.</div>
     <button id="btn-admin-refresh" class="field-btn field-btn-secondary" style="margin-top:6px;">🔄 Tải danh sách người có dữ liệu</button>
@@ -396,6 +413,33 @@
       </div>
       <div class="modal-actions">
         <button type="button" id="lead-modal-cancel" class="field-btn field-btn-secondary">Hủy</button>
+        <button type="submit" class="field-btn">Lưu</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal-overlay" id="density-modal-overlay">
+  <div class="modal-box">
+    <button type="button" class="modal-close-x" id="density-modal-close">✕</button>
+    <h2>Đánh dấu mật độ dân cư</h2>
+    <div class="legend-note" style="margin-bottom:10px;">Ghi lại mức độ đông đúc dân cư quan sát được tại điểm vừa chọn trên bản đồ.</div>
+    <form id="density-form">
+      <div class="modal-field">
+        <label for="density-field-level">Mức độ</label>
+        <select id="density-field-level" required>
+          <option value="">-- Chọn --</option>
+          <option value="cao">🔴 Cao</option>
+          <option value="trung_binh">🟡 Trung bình</option>
+          <option value="thap">🟢 Thấp</option>
+        </select>
+      </div>
+      <div class="modal-field">
+        <label for="density-field-note">Ghi chú (tùy chọn)</label>
+        <textarea id="density-field-note" maxlength="500" placeholder="VD: nhiều nhà trọ công nhân, khu dân cư mới..."></textarea>
+      </div>
+      <div class="modal-actions">
+        <button type="button" id="density-modal-cancel" class="field-btn field-btn-secondary">Hủy</button>
         <button type="submit" class="field-btn">Lưu</button>
       </div>
     </form>
@@ -1869,6 +1913,220 @@ async function loadLeads(){
 
 loadLeads();
 setInterval(loadLeads, 60000); // đồng bộ với những gì đồng nghiệp vừa cập nhật
+
+// ---------- Khảo sát mở văn phòng: Siêu thị/Tạp hóa & Bệnh viện (OpenStreetMap, qua Overpass API) ----------
+// Dữ liệu thật, miễn phí, không cần API key — lấy trực tiếp từ trình duyệt người dùng,
+// giới hạn trong khung tọa độ (bbox) của ranh giới Củ Chi đã có sẵn (cuchiLayer).
+const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
+const btnLoadPoi = document.getElementById('btn-load-poi');
+const poiStatusEl = document.getElementById('poi-status');
+const poiRowsEl = document.getElementById('poi-rows');
+
+const POI_DEFS = [
+  {
+    key: 'poi-cho',
+    label: 'Siêu thị / Tạp hóa',
+    color: '#2b6cb3',
+    // shop=supermarket|convenience|grocery, gộp cả node lẫn way (nhà/khu có hình dạng)
+    query: '["shop"~"^(supermarket|convenience|grocery|department_store)$"]'
+  },
+  {
+    key: 'poi-yte',
+    label: 'Bệnh viện / Phòng khám',
+    color: '#c92a2a',
+    query: '["amenity"~"^(hospital|clinic|doctors|pharmacy)$"]'
+  }
+];
+
+async function loadPoiFromOSM(){
+  btnLoadPoi.disabled = true;
+  poiStatusEl.textContent = 'Đang tải dữ liệu từ OpenStreetMap... (có thể mất 10-30 giây)';
+  poiRowsEl.innerHTML = '';
+
+  try{
+    const b = cuchiLayer.getBounds();
+    // Overpass dùng thứ tự: south,west,north,east
+    const bbox = b.getSouth() + ',' + b.getWest() + ',' + b.getNorth() + ',' + b.getEast();
+
+    const parts = POI_DEFS.map(function(def){
+      return 'node' + def.query + '(' + bbox + ');way' + def.query + '(' + bbox + ');';
+    }).join('');
+    const ql = '[out:json][timeout:25];(' + parts + ');out center tags;';
+
+    const res = await fetch(OVERPASS_URL, {
+      method: 'POST',
+      headers: {'Content-Type': 'text/plain'},
+      body: ql
+    });
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+
+    POI_DEFS.forEach(function(def){
+      if(layerGroups[def.key]){ map.removeLayer(layerGroups[def.key]); }
+      const group = L.layerGroup();
+      let count = 0;
+
+      data.elements.forEach(function(el){
+        const tags = el.tags || {};
+        const matches = def.key === 'poi-cho'
+          ? /^(supermarket|convenience|grocery|department_store)$/.test(tags.shop || '')
+          : /^(hospital|clinic|doctors|pharmacy)$/.test(tags.amenity || '');
+        if(!matches) return;
+
+        const lat = el.type === 'node' ? el.lat : (el.center && el.center.lat);
+        const lng = el.type === 'node' ? el.lon : (el.center && el.center.lon);
+        if(lat === undefined || lng === undefined) return;
+
+        const name = tags.name || tags['name:vi'] || '(chưa có tên trên OSM)';
+        const typeLabel = tags.shop || tags.amenity || '';
+        const marker = L.circleMarker([lat, lng], {
+          radius: 6, color: '#fff', weight: 1.5, fillColor: def.color, fillOpacity: 0.95
+        });
+        marker.bindPopup('<b>' + name + '</b><br><span style="color:var(--muted);font-size:12px;">' + typeLabel + '</span>' +
+          (tags['addr:street'] ? '<br>' + (tags['addr:housenumber'] ? tags['addr:housenumber'] + ' ' : '') + tags['addr:street'] : ''));
+        marker.bindTooltip(name, {sticky:true, direction:'top', opacity:0.95});
+        marker.addTo(group);
+        count++;
+      });
+
+      group.addTo(map);
+      layerGroups[def.key] = group;
+
+      const row = document.createElement('div');
+      row.className = 'layer-row';
+      row.innerHTML = '<input type="checkbox" id="chk-' + def.key + '" checked>' +
+        '<span class="swatch" style="background:' + def.color + '55;border-color:' + def.color + ';"></span>' +
+        '<span class="layer-label">' + def.label + '</span>' +
+        '<span class="layer-count">(' + count + ')</span>';
+      row.addEventListener('click', function(e){
+        if(e.target.tagName !== 'INPUT'){
+          const chk = row.querySelector('input');
+          chk.checked = !chk.checked;
+          applyLayer(def.key, chk.checked);
+        }
+      });
+      row.querySelector('input').addEventListener('change', function(e){
+        applyLayer(def.key, e.target.checked);
+      });
+      poiRowsEl.appendChild(row);
+    });
+
+    poiStatusEl.textContent = 'Đã tải xong dữ liệu từ OpenStreetMap (bấm nút này lại bất kỳ lúc nào để lấy dữ liệu mới nhất).';
+  }catch(e){
+    poiStatusEl.textContent = 'Không tải được dữ liệu (mạng chậm hoặc máy chủ OpenStreetMap đang bận) — thử bấm lại sau ít phút.';
+  }finally{
+    btnLoadPoi.disabled = false;
+  }
+}
+btnLoadPoi.addEventListener('click', loadPoiFromOSM);
+
+// ---------- Khảo sát mở văn phòng: Mật độ dân cư (đánh dấu tay, lưu server) ----------
+const DENSITY_API = '/api/density';
+const DENSITY_LABELS = {cao:'🔴 Cao', trung_binh:'🟡 Trung bình', thap:'🟢 Thấp'};
+const DENSITY_COLORS = {cao:'#c92a2a', trung_binh:'#e0a51e', thap:'#2f9e44'};
+
+let densityMode = false;
+let densityData = [];
+const densityMarkers = {};
+let pendingDensityLatLng = null;
+
+const btnDensityMode = document.getElementById('btn-densitymode');
+const densityListEl = document.getElementById('density-list');
+const densityModalOverlay = document.getElementById('density-modal-overlay');
+const densityForm = document.getElementById('density-form');
+const densityFieldLevel = document.getElementById('density-field-level');
+const densityFieldNote = document.getElementById('density-field-note');
+
+btnDensityMode.addEventListener('click', function(){
+  densityMode = !densityMode;
+  btnDensityMode.classList.toggle('active', densityMode);
+  btnDensityMode.textContent = densityMode ? 'Đang đánh dấu — bấm bản đồ để đặt điểm (bấm lại để tắt)' : 'Bấm bản đồ để đánh dấu mật độ dân cư';
+  map.getContainer().style.cursor = densityMode ? 'crosshair' : '';
+});
+
+map.on('click', function(e){
+  if(!densityMode) return;
+  pendingDensityLatLng = e.latlng;
+  densityFieldLevel.value = '';
+  densityFieldNote.value = '';
+  densityModalOverlay.classList.add('open');
+});
+
+function closeDensityModal(){
+  densityModalOverlay.classList.remove('open');
+  pendingDensityLatLng = null;
+}
+document.getElementById('density-modal-close').addEventListener('click', closeDensityModal);
+document.getElementById('density-modal-cancel').addEventListener('click', closeDensityModal);
+densityModalOverlay.addEventListener('click', function(e){ if(e.target === densityModalOverlay) closeDensityModal(); });
+
+densityForm.addEventListener('submit', async function(e){
+  e.preventDefault();
+  if(!pendingDensityLatLng) return;
+  const level = densityFieldLevel.value;
+  if(!level) return;
+  const note = densityFieldNote.value.trim();
+  const id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : ('density-' + Math.random().toString(36).slice(2) + Date.now().toString(36));
+  try{
+    await fetch(DENSITY_API, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        id: id, level: level, note: note,
+        lat: pendingDensityLatLng.lat, lng: pendingDensityLatLng.lng,
+        createdBy: myName || null
+      })
+    });
+    closeDensityModal();
+    await loadDensity();
+  }catch(err){
+    alert('Không lưu được, kiểm tra kết nối mạng và thử lại.');
+  }
+});
+
+function renderDensityMarker(pt){
+  if(densityMarkers[pt.id]){ map.removeLayer(densityMarkers[pt.id]); }
+  const marker = L.circleMarker([pt.lat, pt.lng], {
+    radius: 8, color: '#fff', weight: 2, fillColor: DENSITY_COLORS[pt.level] || '#999', fillOpacity: 0.95
+  }).addTo(map);
+  marker.bindPopup('<b>' + (DENSITY_LABELS[pt.level] || pt.level) + '</b>' + (pt.note ? '<br>' + pt.note : '') +
+    '<br><button class="density-popup-delete" style="margin-top:4px;border:none;background:none;color:#b3541e;font-size:12px;cursor:pointer;padding:0;">🗑️ Xóa</button>');
+  marker.on('popupopen', function(){
+    const btn = marker.getPopup().getElement().querySelector('.density-popup-delete');
+    if(btn) btn.addEventListener('click', async function(){
+      if(!confirm('Xóa điểm mật độ dân cư này?')) return;
+      try{
+        await fetch(DENSITY_API + '?id=' + encodeURIComponent(pt.id), {method:'DELETE'});
+        await loadDensity();
+      }catch(err){ alert('Không xóa được do lỗi mạng, thử lại sau.'); }
+    });
+  });
+  densityMarkers[pt.id] = marker;
+}
+
+function renderDensityList(){
+  const counts = {cao:0, trung_binh:0, thap:0};
+  densityData.forEach(function(p){ if(counts[p.level] !== undefined) counts[p.level]++; });
+  densityListEl.innerHTML = densityData.length
+    ? '<div class="legend-note" style="margin-top:6px;"><b>' + densityData.length + '</b> điểm đã đánh dấu — 🔴 ' + counts.cao + ' · 🟡 ' + counts.trung_binh + ' · 🟢 ' + counts.thap + '</div>'
+    : '<div class="legend-note">Chưa có điểm nào. Bật "Bấm bản đồ để đánh dấu mật độ dân cư" ở trên rồi bấm vào bản đồ.</div>';
+}
+
+async function loadDensity(){
+  try{
+    const res = await fetch(DENSITY_API);
+    densityData = await res.json();
+    const currentIds = new Set(densityData.map(function(p){ return p.id; }));
+    Object.keys(densityMarkers).forEach(function(id){
+      if(!currentIds.has(id)){ map.removeLayer(densityMarkers[id]); delete densityMarkers[id]; }
+    });
+    densityData.forEach(renderDensityMarker);
+    renderDensityList();
+  }catch(e){
+    // lỗi mạng tạm thời — giữ nguyên dữ liệu/markers hiện có
+  }
+}
+loadDensity();
 
 // ---------- Quản trị: xóa dữ liệu tuyển dụng ----------
 const leadAdminStatusesEl = document.getElementById('lead-admin-statuses');
