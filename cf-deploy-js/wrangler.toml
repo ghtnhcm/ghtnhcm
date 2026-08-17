@@ -5,3 +5,8 @@ compatibility_date = "2026-08-16"
 [assets]
 directory = "."
 binding = "ASSETS"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "ghtnhcm"
+database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
