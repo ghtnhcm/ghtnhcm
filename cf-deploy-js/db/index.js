@@ -1,9 +1,8 @@
-import { drizzle } from "drizzle-orm/neon-http";
-import { neon } from "@neondatabase/serverless";
+import { drizzle } from "drizzle-orm/d1";
 import * as schema from "./schema.js";
 
-// DATABASE_URL is provided via Cloudflare Pages environment variables.
-export function getDb(databaseUrl) {
-  const sql = neon(databaseUrl);
-  return drizzle(sql, { schema });
+// D1 is provided as a native Cloudflare binding (env.DB), configured via
+// the [[d1_databases]] entry in wrangler.toml — no connection string needed.
+export function getDb(d1) {
+  return drizzle(d1, { schema });
 }

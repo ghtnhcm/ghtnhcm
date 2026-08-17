@@ -15,7 +15,7 @@ function cleanOptionalString(v, maxLen) {
 }
 
 export const onRequestGet = async ({ env }) => {
-  const db = getDb(env.DATABASE_URL);
+  const db = getDb(env.DB);
   const rows = await db
     .select()
     .from(densityPoints)
@@ -24,7 +24,7 @@ export const onRequestGet = async ({ env }) => {
 };
 
 export const onRequestPost = async ({ request, env }) => {
-  const db = getDb(env.DATABASE_URL);
+  const db = getDb(env.DB);
 
   let body;
   try {
@@ -61,7 +61,7 @@ export const onRequestPost = async ({ request, env }) => {
 };
 
 export const onRequestDelete = async ({ request, env }) => {
-  const db = getDb(env.DATABASE_URL);
+  const db = getDb(env.DB);
   const url = new URL(request.url);
 
   // Admin-only: xóa toàn bộ dữ liệu mật độ dân cư, cùng cơ chế mật khẩu

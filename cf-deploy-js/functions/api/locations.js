@@ -22,7 +22,7 @@ const TRAIL_VISIBILITY_MS = 24 * 60 * 60 * 1000; // 24 giờ
 
 
 export const onRequestPost = async ({ request, env }) => {
-  const db = getDb(env.DATABASE_URL);
+  const db = getDb(env.DB);
 
   let body;
   try {
@@ -77,7 +77,7 @@ export const onRequestPost = async ({ request, env }) => {
 };
 
 export const onRequestGet = async ({ request, env }) => {
-  const db = getDb(env.DATABASE_URL);
+  const db = getDb(env.DB);
   const url = new URL(request.url);
   const cutoff = new Date(Date.now() - STALE_MS);
   const rows = await db
@@ -144,7 +144,7 @@ export const onRequestGet = async ({ request, env }) => {
 };
 
 export const onRequestDelete = async ({ request, env }) => {
-  const db = getDb(env.DATABASE_URL);
+  const db = getDb(env.DB);
   const url = new URL(request.url);
 
   // Admin-only: delete data for selected people and/or a time window (or

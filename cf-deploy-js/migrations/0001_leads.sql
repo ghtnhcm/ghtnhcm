@@ -1,27 +1,24 @@
 CREATE TABLE "leads" (
-	"id" text PRIMARY KEY,
+	"id" text PRIMARY KEY NOT NULL,
 	"name" text,
 	"phone" text,
-	"lat" double precision NOT NULL,
-	"lng" double precision NOT NULL,
-	"status" text DEFAULT 'chua_gap' NOT NULL,
+	"lat" real NOT NULL,
+	"lng" real NOT NULL,
+	"status" text NOT NULL DEFAULT 'chua_gap',
 	"note" text,
-	"next_visit_at" timestamp,
+	"next_visit_at" integer,
 	"created_by" text,
-	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"created_at" integer NOT NULL DEFAULT (unixepoch()),
+	"updated_at" integer NOT NULL DEFAULT (unixepoch())
 );
 CREATE TABLE "lead_visits" (
-	"id" serial PRIMARY KEY,
+	"id" integer PRIMARY KEY AUTOINCREMENT,
 	"lead_id" text NOT NULL,
 	"status" text NOT NULL,
 	"note" text,
 	"visited_by" text,
-	"visited_at" timestamp DEFAULT now() NOT NULL
+	"visited_at" integer NOT NULL DEFAULT (unixepoch())
 );
---> statement-breakpoint
 CREATE INDEX "leads_status_idx" ON "leads" ("status");
---> statement-breakpoint
 CREATE INDEX "leads_next_visit_idx" ON "leads" ("next_visit_at");
---> statement-breakpoint
 CREATE INDEX "lead_visits_lead_idx" ON "lead_visits" ("lead_id");

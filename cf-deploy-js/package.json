@@ -5,15 +5,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:migrate:local": "wrangler d1 migrations apply ghtnhcm --local",
+    "db:migrate:remote": "wrangler d1 migrations apply ghtnhcm --remote"
   },
   "dependencies": {
-    "@neondatabase/serverless": "^0.10.4",
     "drizzle-orm": "^0.36.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250101.0",
-    "drizzle-kit": "^0.28.0"
+    "wrangler": "^3.90.0"
   }
 }

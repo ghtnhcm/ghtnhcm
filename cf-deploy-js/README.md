@@ -1,75 +1,91 @@
-# GHTN HCM — Bản đồ khảo sát Củ Chi (bản chuyển sang Cloudflare Pages, JS thuần)
+# GHTN HCM — Bản đồ khảo sát Củ Chi (bản Cloudflare Pages + D1, JS thuần)
 
-> Bản này dùng JavaScript thuần (không có file `.ts`) để có thể **kéo-thả (drag &
-> drop) trực tiếp trên Cloudflare Pages Dashboard** — mục "Upload and deploy" của
-> Cloudflare không hỗ trợ file TypeScript. Nếu bạn muốn dùng TypeScript, dùng bản
-> `wrangler pages deploy .` với các file `.ts` thay vì kéo-thả trên dashboard.
+> Bản này dùng **Cloudflare D1** (SQLite chạy trên hạ tầng Cloudflare) thay cho
+> Postgres/Neon — vì D1 **miễn phí, không tính phí truyền dữ liệu (egress)**,
+> nên sẽ không còn bị khóa giữa chừng như khi dùng Neon free tier.
+> Vẫn là JavaScript thuần (không `.ts`) để kéo-thả trực tiếp trên Cloudflare
+> Pages Dashboard được.
 
-Dự án gốc được viết cho Netlify (Netlify Functions + Netlify DB). Bản này đã được
-chuyển đổi để chạy trên **Cloudflare Pages**:
+## Vì sao đổi sang D1
 
-- `index.html` — giao diện bản đồ (không đổi so với bản gốc)
-- `functions/api/locations.ts` — Cloudflare Pages Function thay thế cho Netlify
-  Function, xử lý `GET / POST / DELETE /api/locations`
-- `db/` — schema Drizzle ORM, dùng driver `@neondatabase/serverless` (chạy được
-  trên Cloudflare Workers runtime, khác với driver `netlify-db` chỉ chạy trên Netlify)
-- `migrations/0000_init.sql` — SQL tạo 2 bảng `live_locations` và `location_history`
-
-## Vì sao cần đổi database
-
-Netlify DB là dịch vụ Postgres (Neon) được Netlify tự động cấp phát và gắn biến
-môi trường sẵn — nó **không khả dụng khi deploy trên Cloudflare**. Bạn cần tự tạo
-một database Postgres và cấu hình biến môi trường `DATABASE_URL`. Cách đơn giản
-nhất là dùng [Neon](https://neon.tech) (free tier, tương thích 100% vì code đã
-dùng driver `@neondatabase/serverless`).
+- Neon free tier giới hạn 5GB data transfer/tháng, hết là bị khóa compute.
+- D1 free tier: không tính phí egress, ~150 triệu lượt đọc + ~3 triệu lượt
+  ghi/tháng, 5GB lưu trữ — rộng rãi hơn nhiều cho app này.
+- D1 chạy cùng hạ tầng Cloudflare Workers → nhanh hơn, không cần biến môi
+  trường `DATABASE_URL`, không cần tài khoản Neon nữa.
+- Đánh đổi: phải tạo D1 database mới và **chuyển thủ công dữ liệu cũ** từ
+  Neon sang (xem bước 3 bên dưới) — D1 không tự đồng bộ với Neon.
 
 ## Các bước deploy
 
-### 1. Tạo database Postgres (Neon)
-1. Vào https://neon.tech, tạo project mới (chọn region gần VN, ví dụ Singapore).
-2. Copy connection string dạng `postgresql://user:pass@host/dbname?sslmode=require`.
-3. Tạo bảng: mở **SQL Editor** trên trang Neon, dán nguyên nội dung file
-   `migrations/0000_init.sql`, bấm Run.
+### 1. Tạo D1 database
 
-### 2. Deploy lên Cloudflare Pages
-
-**Cách A — Kéo-thả trên Dashboard (đúng màn hình bạn đang thấy):**
-1. Ở màn hình "Upload and deploy", xoá hết các file cũ (nếu có, bấm "Remove all").
-2. Kéo-thả **toàn bộ nội dung bên trong** thư mục giải nén này (không kéo cả thư
-   mục cha) — tức là kéo `index.html`, `functions/`, `db/`, `migrations/`,
-   `package.json`, `README.md`, `.gitignore` — vào khung upload. Lúc này sẽ
-   không còn cảnh báo file TypeScript nữa vì bản này toàn bộ là `.js`.
-3. Bấm **Deploy**.
-4. Sau khi deploy xong, vào project vừa tạo → Settings → Environment variables,
-   thêm `DATABASE_URL` = connection string Neon ở bước 1 (thêm cho cả
-   Production và Preview), rồi bấm **Retry deployment** để function nhận được
-   biến môi trường.
-
-**Cách B — qua Git (khuyên dùng nếu cần cập nhật code thường xuyên):**
-1. Đẩy toàn bộ thư mục này lên một repo GitHub/GitLab.
-2. Vào Cloudflare Dashboard → Workers & Pages → Create → Pages → Connect to Git.
-3. Chọn repo, để trống Build command (không cần build), Build output directory
-   để `/` (thư mục gốc).
-4. Vào Settings → Environment variables, thêm `DATABASE_URL` = connection string
-   Neon ở bước 1 (thêm cho cả Production và Preview).
-5. Deploy.
-
-**Cách C — Direct Upload qua CLI (không cần Git):**
 ```bash
 npm install -g wrangler
+wrangler login
+wrangler d1 create ghtnhcm
+```
+
+Lệnh trên in ra một khối cấu hình có `database_id` — copy giá trị đó vào
+`wrangler.toml`, thay cho `REPLACE_WITH_YOUR_D1_DATABASE_ID`.
+
+### 2. Chạy migration để tạo bảng
+
+```bash
+wrangler d1 migrations apply ghtnhcm --remote
+```
+
+(Dùng `--local` nếu muốn test trên máy trước bằng `wrangler pages dev .`)
+
+### 3. (Tuỳ chọn) Chuyển dữ liệu cũ từ Neon sang D1
+
+Nếu bạn còn dữ liệu cũ trong Neon muốn giữ lại:
+
+1. Vào Neon SQL Editor, chạy lệnh export từng bảng ra CSV, ví dụ:
+   ```sql
+   SELECT * FROM live_locations;
+   ```
+   rồi bấm nút tải xuống CSV/kết quả (Neon console có nút export kết quả).
+2. Chuyển từng dòng CSV thành câu lệnh `INSERT INTO ...` (có thể nhờ Claude
+   convert giúp nếu bạn dán nội dung CSV vào chat) — lưu ý các cột thời gian
+   (`updated_at`, `recorded_at`, `created_at`...) cần đổi từ định dạng
+   timestamp Postgres sang **số giây Unix** (D1 lưu thời gian dạng số).
+3. Chạy các câu `INSERT` đó bằng:
+   ```bash
+   wrangler d1 execute ghtnhcm --remote --file=./seed.sql
+   ```
+
+Nếu không cần giữ dữ liệu cũ (bắt đầu lại từ đầu), bỏ qua bước này.
+
+### 4. Deploy lên Cloudflare Pages
+
+**Cách A — Kéo-thả trên Dashboard:**
+1. Ở màn hình "Upload and deploy", xoá hết file cũ (nếu có).
+2. Kéo-thả toàn bộ nội dung bên trong thư mục này (`index.html`,
+   `functions/`, `db/`, `migrations/`, `package.json`, `wrangler.toml`,
+   `README.md`, `.gitignore`) vào khung upload.
+3. Bấm **Deploy**.
+4. Vào project vừa tạo → Settings → Bindings → thêm **D1 database binding**:
+   Variable name = `DB`, chọn database `ghtnhcm` vừa tạo ở bước 1. (Kéo-thả
+   qua Dashboard không tự đọc `wrangler.toml`, nên bước gắn binding này phải
+   làm thủ công trên Dashboard.)
+5. Bấm **Retry deployment**.
+
+**Cách B — qua CLI (khuyên dùng, đọc thẳng `wrangler.toml`):**
+```bash
 wrangler pages deploy . --project-name=ghtn-hcm
 ```
-Sau đó vào Dashboard → project vừa tạo → Settings → Environment variables để
-thêm `DATABASE_URL`, rồi deploy lại (`wrangler pages deploy .`) để function
-nhận được biến môi trường.
 
-### 3. Kiểm tra
+### 5. Kiểm tra
 Mở trang đã deploy, bật chia sẻ vị trí trên 1 thiết bị, kiểm tra endpoint
 `/api/locations` trả về JSON danh sách vị trí.
 
 ## Lưu ý
-- Toàn bộ logic nghiệp vụ (validate dữ liệu, giới hạn độ dài tên/id, thời gian
-  lưu trữ lịch sử di chuyển 24h, ngưỡng "offline" sau 90s không cập nhật) được
-  giữ nguyên 100% so với bản Netlify gốc.
-- Vị trí của người dùng được lưu và hiển thị cho những người khác trong nhóm —
-  hãy đảm bảo mọi thành viên đều biết và đồng ý việc chia sẻ vị trí này.
+- Toàn bộ logic nghiệp vụ (validate dữ liệu, giới hạn độ dài tên/id, thời
+  gian lưu trữ lịch sử di chuyển, ngưỡng "offline" sau 90s không cập nhật)
+  được giữ nguyên 100% so với bản Neon/Postgres.
+- Vị trí của người dùng được lưu và hiển thị cho những người khác trong
+  nhóm — hãy đảm bảo mọi thành viên đều biết và đồng ý việc chia sẻ vị trí
+  này.
+- Biến môi trường bí mật `ADMIN_KEY` (dùng để xoá dữ liệu hàng loạt) vẫn cần
+  cấu hình lại ở Settings → Environment variables như bản cũ.

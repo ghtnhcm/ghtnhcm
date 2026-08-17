@@ -62,7 +62,7 @@ function parseOptionalDate(v) {
 }
 
 export const onRequestGet = async ({ request, env }) => {
-  const db = getDb(env.DATABASE_URL);
+  const db = getDb(env.DB);
   const url = new URL(request.url);
 
   const rows = await db
@@ -92,7 +92,7 @@ export const onRequestGet = async ({ request, env }) => {
 };
 
 export const onRequestPost = async ({ request, env }) => {
-  const db = getDb(env.DATABASE_URL);
+  const db = getDb(env.DB);
 
   let body;
   try {
@@ -159,7 +159,7 @@ export const onRequestPost = async ({ request, env }) => {
 // Cập nhật 1 mối đã có + ghi thêm 1 lượt ghé thăm vào lịch sử (dùng khi quay
 // lại 1 địa chỉ lần 2, lần 3...). Dùng PATCH vì đây là cập nhật một phần.
 export const onRequestPatch = async ({ request, env }) => {
-  const db = getDb(env.DATABASE_URL);
+  const db = getDb(env.DB);
 
   let body;
   try {
@@ -215,7 +215,7 @@ export const onRequestPatch = async ({ request, env }) => {
 };
 
 export const onRequestDelete = async ({ request, env }) => {
-  const db = getDb(env.DATABASE_URL);
+  const db = getDb(env.DB);
   const url = new URL(request.url);
 
   // Admin-only: xóa hàng loạt theo trạng thái và/hoặc khoảng thời gian (hoặc

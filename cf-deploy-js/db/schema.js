@@ -1,15 +1,16 @@
-import { pgTable, text, doublePrecision, timestamp, serial, integer, jsonb } from "drizzle-orm/pg-core";
+import { sqliteTable, text, real, integer } from "drizzle-orm/sqlite-core";
+import { sql } from "drizzle-orm";
 
 // One row per participant currently sharing their live location.
 // Rows are upserted on every position update and considered stale (hidden)
 // once "updated_at" is older than the freshness window used by the API.
-export const liveLocations = pgTable("live_locations", {
+export const liveLocations = sqliteTable("live_locations", {
   id: text().primaryKey(),
   name: text().notNull(),
-  lat: doublePrecision().notNull(),
-  lng: doublePrecision().notNull(),
-  accuracy: doublePrecision(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  lat: real().notNull(),
+  lng: real().notNull(),
+  accuracy: real(),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull().default(sql`(unixepoch())`),
 });
 
 // Append-only trail of positions recorded while a participant has group
@@ -20,14 +21,14 @@ export const liveLocations = pgTable("live_locations", {
 // polyline instead of jumping between unrelated trips. Old rows are pruned
 // opportunistically by the API (see HISTORY_RETENTION_MS) so this table
 // doesn't grow forever.
-export const locationHistory = pgTable("location_history", {
-  id: serial().primaryKey(),
+export const locationHistory = sqliteTable("location_history", {
+  id: integer().primaryKey({ autoIncrement: true }),
   participantId: text("participant_id").notNull(),
   sessionId: text("session_id").notNull(),
   name: text().notNull(),
-  lat: doublePrecision().notNull(),
-  lng: doublePrecision().notNull(),
-  recordedAt: timestamp("recorded_at").defaultNow().notNull(),
+  lat: real().notNull(),
+  lng: real().notNull(),
+  recordedAt: integer("recorded_at", { mode: "timestamp" }).notNull().default(sql`(unixepoch())`),
 });
 
 // One row per recruitment "mối" (lead) placed on the map while doing
@@ -41,45 +42,45 @@ export const locationHistory = pgTable("location_history", {
 // "eval_score" (số câu "Có") and "eval_result" ("dat" khi đủ 10/10 điểm,
 // "chua_dat" khi chưa đủ) kept alongside for quick display/filtering
 // without recomputing from the raw answers each time.
-export const leads = pgTable("leads", {
+export const leads = sqliteTable("leads", {
   id: text().primaryKey(),
   name: text(),
   phone: text(),
-  lat: doublePrecision().notNull(),
-  lng: doublePrecision().notNull(),
+  lat: real().notNull(),
+  lng: real().notNull(),
   status: text().notNull().default("khong_tiem_nang"),
   note: text(),
-  nextVisitAt: timestamp("next_visit_at"),
-  evalAnswers: jsonb("eval_answers"),
+  nextVisitAt: integer("next_visit_at", { mode: "timestamp" }),
+  evalAnswers: text("eval_answers", { mode: "json" }),
   evalScore: integer("eval_score"),
   evalResult: text("eval_result"),
   createdBy: text("created_by"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull().default(sql`(unixepoch())`),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull().default(sql`(unixepoch())`),
+});
+
+// Điểm đánh dấu mật độ dân cư (khảo sát mở văn phòng). Không có nguồn dữ
+// liệu tự động cho mật độ dân cư (khác với địa điểm kinh doanh lấy được từ
+// OpenStreetMap), nên đây là điểm do người khảo sát tự bấm và chọn mức độ
+// dựa trên quan sát thực địa.
+export const densityPoints = sqliteTable("density_points", {
+  id: text().primaryKey(),
+  level: text().notNull(), // 'cao' | 'trung_binh' | 'thap'
+  note: text(),
+  lat: real().notNull(),
+  lng: real().notNull(),
+  createdBy: text("created_by"),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull().default(sql`(unixepoch())`),
 });
 
 // Append-only log of every visit/update made to a lead (status change,
 // note, who did it, when) so the team can see the full contact history at
 // one address instead of just the current snapshot.
-// Điểm đánh dấu mật độ dân cư (khảo sát mở văn phòng). Không có nguồn dữ
-// liệu tự động cho mật độ dân cư (khác với địa điểm kinh doanh lấy được từ
-// OpenStreetMap), nên đây là điểm do người khảo sát tự bấm và chọn mức độ
-// dựa trên quan sát thực địa.
-export const densityPoints = pgTable("density_points", {
-  id: text().primaryKey(),
-  level: text().notNull(), // 'cao' | 'trung_binh' | 'thap'
-  note: text(),
-  lat: doublePrecision().notNull(),
-  lng: doublePrecision().notNull(),
-  createdBy: text("created_by"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-export const leadVisits = pgTable("lead_visits", {
-  id: serial().primaryKey(),
+export const leadVisits = sqliteTable("lead_visits", {
+  id: integer().primaryKey({ autoIncrement: true }),
   leadId: text("lead_id").notNull(),
   status: text().notNull(),
   note: text(),
   visitedBy: text("visited_by"),
-  visitedAt: timestamp("visited_at").defaultNow().notNull(),
+  visitedAt: integer("visited_at", { mode: "timestamp" }).notNull().default(sql`(unixepoch())`),
 });
