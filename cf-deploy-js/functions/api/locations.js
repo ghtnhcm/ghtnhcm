@@ -13,6 +13,9 @@ const MAX_ID_LEN = 64;
 const HISTORY_RETENTION_MS = 90 * 24 * 60 * 60 * 1000; // ~3 months
 // Safety cap on how many trail points come back per session in one response.
 const MAX_HISTORY_POINTS_PER_SESSION = 5000;
+// Safety cap on total trail points fetched across ALL participants in one
+// history request (single batched query — see onRequestGet below).
+const MAX_TOTAL_HISTORY_POINTS = 20000;
 // A person's trail stays visible to the group for this long after they go
 // offline (close the tab, lose signal, etc.) — the points were never
 // deleted from the database, this just controls how long the *API* keeps
@@ -102,42 +105,52 @@ export const onRequestGet = async ({ request, env }) => {
   // so we still surface the route for anyone active within the visibility
   // window, not only the people currently online. Currently-online people
   // (in `rows`) are always included so their live-updating route shows too.
+  //
+  // IMPORTANT: this used to run one D1 query per participant in a loop,
+  // which blows through Cloudflare Workers' subrequest limit once enough
+  // people have shared a location (each D1 call is a subrequest) and makes
+  // the whole endpoint return 503. Fetch every recent point in a single
+  // query instead and group it in JS.
   const trailCutoff = new Date(Date.now() - TRAIL_VISIBILITY_MS);
-  const recentParticipants = await db
-    .select({ id: locationHistory.participantId, name: locationHistory.name })
+  const allPoints = await db
+    .select({
+      participantId: locationHistory.participantId,
+      name: locationHistory.name,
+      lat: locationHistory.lat,
+      lng: locationHistory.lng,
+      recordedAt: locationHistory.recordedAt,
+      sessionId: locationHistory.sessionId,
+    })
     .from(locationHistory)
     .where(gt(locationHistory.recordedAt, trailCutoff))
-    .groupBy(locationHistory.participantId, locationHistory.name);
+    .orderBy(desc(locationHistory.recordedAt))
+    .limit(MAX_TOTAL_HISTORY_POINTS);
 
-  const participantsForTrails = new Map();
-  for (const row of rows) participantsForTrails.set(row.id, row.name);
-  for (const p of recentParticipants) {
-    if (!participantsForTrails.has(p.id)) participantsForTrails.set(p.id, p.name);
+  // allPoints is newest-first across everyone. Walk it once, and for each
+  // participant keep only the points belonging to their most recent session
+  // (the first sessionId we see for that participant, since we're going
+  // newest-first).
+  const trailsBuild = new Map();
+  for (const p of allPoints) {
+    let entry = trailsBuild.get(p.participantId);
+    if (!entry) {
+      entry = { name: p.name, sessionId: p.sessionId, points: [] };
+      trailsBuild.set(p.participantId, entry);
+    }
+    if (p.sessionId !== entry.sessionId) continue; // older session, ignore
+    entry.points.push({ lat: p.lat, lng: p.lng, t: p.recordedAt.toISOString() });
   }
 
   const trails = {};
-  for (const [participantId, name] of participantsForTrails) {
-    const points = await db
-      .select({
-        lat: locationHistory.lat,
-        lng: locationHistory.lng,
-        recordedAt: locationHistory.recordedAt,
-        sessionId: locationHistory.sessionId,
-      })
-      .from(locationHistory)
-      .where(eq(locationHistory.participantId, participantId))
-      .orderBy(desc(locationHistory.recordedAt))
-      .limit(MAX_HISTORY_POINTS_PER_SESSION);
-
-    if (points.length === 0) continue;
-    // Only keep the most recent session's points (points is newest-first).
-    const currentSessionId = points[0].sessionId;
-    const sessionPoints = points
-      .filter((p) => p.sessionId === currentSessionId)
-      .reverse()
-      .map((p) => ({ lat: p.lat, lng: p.lng, t: p.recordedAt.toISOString() }));
-
-    trails[participantId] = { name, points: sessionPoints };
+  for (const [participantId, entry] of trailsBuild) {
+    entry.points.reverse(); // back to chronological order
+    trails[participantId] = { name: entry.name, points: entry.points };
+  }
+  // Currently-online people (in `rows`) with no recent history rows yet
+  // (e.g. just started sharing) still get an (empty) trail entry so the
+  // frontend can rely on every online participant having one.
+  for (const row of rows) {
+    if (!trails[row.id]) trails[row.id] = { name: row.name, points: [] };
   }
 
   return Response.json({ locations: rows, trails });
