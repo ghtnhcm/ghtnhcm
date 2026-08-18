@@ -82,6 +82,11 @@
   #stats b{color:var(--ink);}
   .leaflet-popup-content{font-size:13px;}
   .leaflet-popup-content b{color:var(--accent);}
+  /* Viền trắng phát sáng quanh các đường tuyến (route-line) để luôn nổi rõ trên mọi
+     nền bản đồ, kể cả nền Vệ tinh (ảnh thực địa nhiều màu đất/cây dễ làm chìm đường màu) */
+  .route-line{
+    filter: drop-shadow(0 0 1.4px #fff) drop-shadow(0 0 1.4px #fff) drop-shadow(0 0 1.4px #fff);
+  }
   #footer-note{
     font-size:11px;
     color:var(--muted);
@@ -567,7 +572,7 @@ const layerGroups = {};
 
 // Cu Chi boundary (outline only) — vùng khảo sát trung tâm, vẫn giữ lại làm mốc tham chiếu
 const cuchiLayer = L.geoJSON(DATA.cuchi, {
-  style: {color:'#b3541e', weight:3, fill:false, opacity:0.95}
+  style: {color:'#b3541e', weight:3, fill:false, opacity:0.95, className: 'route-line'}
 }).addTo(map);
 layerGroups['cuchi'] = cuchiLayer;
 
@@ -581,7 +586,7 @@ function addLineLayer(key, features, color, weight){
   features.forEach(function(feat){
     if(feat.geometry.type !== 'LineString') return;
     const latlngs = feat.geometry.coordinates.map(c => [c[1], c[0]]);
-    const lyr = L.polyline(latlngs, {color: color, weight: weight || 1.6, opacity: 0.85});
+    const lyr = L.polyline(latlngs, {color: color, weight: weight || 1.6, opacity: 0.85, className: 'route-line'});
     if(feat.properties.name) lyr.bindPopup('<b>' + feat.properties.name + '</b>');
     lyr.addTo(group);
     count++;
@@ -739,7 +744,7 @@ if(DATA.hcm){
 
       if(feat.geometry.type === 'LineString'){
         const latlngs = feat.geometry.coordinates.map(c => [c[1], c[0]]);
-        const lyr = L.polyline(latlngs, {color: color, weight: 2, opacity: 0.9});
+        const lyr = L.polyline(latlngs, {color: color, weight: 2, opacity: 0.9, className: 'route-line'});
         if(label){
           lyr.bindTooltip(label, {sticky:true, direction:'top', opacity:0.95});
           lyr.bindPopup('<b>' + label + '</b>');
@@ -1057,7 +1062,8 @@ function drawTrails(trails){
         weight: 3,
         opacity: 0.75,
         dashArray: isMe ? null : '1 6',
-        lineCap: 'round'
+        lineCap: 'round',
+        className: 'route-line'
       }).addTo(map);
     } else {
       trailLines[id].setLatLngs(latlngs);
@@ -2328,8 +2334,8 @@ document.getElementById('btn-admin-wipe-leads').addEventListener('click', async 
         if(feat.geometry.type === 'Polygon'){
           const latlngs = feat.geometry.coordinates[0].map(c => [c[1], c[0]]);
           const style = isBoundaryFolder
-            ? { color: color, weight: 3.5, fill: false, opacity: 0.95 }
-            : { color: color, weight: 1.6, opacity: 0.85, fillColor: color, fillOpacity: 0.14 };
+            ? { color: color, weight: 3.5, fill: false, opacity: 0.95, className: 'route-line' }
+            : { color: color, weight: 1.6, opacity: 0.85, fillColor: color, fillOpacity: 0.14, className: 'route-line' };
           const lyr = L.polygon(latlngs, style);
           lyr.bindTooltip(tooltipHtml, {sticky:true, direction:'top', opacity:0.95});
           lyr.bindPopup(tooltipHtml);
@@ -2346,7 +2352,7 @@ document.getElementById('btn-admin-wipe-leads').addEventListener('click', async 
           count++;
         } else if(feat.geometry.type === 'LineString'){
           const latlngs = feat.geometry.coordinates.map(c => [c[1], c[0]]);
-          const lyr = L.polyline(latlngs, {color: color, weight: 2.2, opacity: 0.9});
+          const lyr = L.polyline(latlngs, {color: color, weight: 2.2, opacity: 0.9, className: 'route-line'});
           lyr.bindTooltip(tooltipHtml, {sticky:true, direction:'top', opacity:0.95});
           lyr.bindPopup(tooltipHtml);
           lyr.addTo(group);
