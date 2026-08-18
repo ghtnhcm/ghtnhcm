@@ -2550,5 +2550,254 @@ document.getElementById('btn-admin-wipe-leads').addEventListener('click', async 
   loadCandidatesFromSheet();
 })();
 </script>
+  <!-- =====================================================================
+     KHỐI: Tra cứu / tìm kiếm địa chỉ (Nominatim - OpenStreetMap, miễn phí)
+     - Ô tìm kiếm nổi trên bản đồ, gõ địa chỉ là hiện gợi ý bên dưới.
+     - Bấm 1 gợi ý (hoặc Enter): bản đồ bay tới đó, đánh dấu 1 ghim đỏ.
+     - Ưu tiên kết quả ở Việt Nam / khu vực TP.HCM, không chặn cứng nơi khác.
+     - Khối tách riêng — muốn gỡ chỉ cần xóa từ "BẮT ĐẦU KHỐI" tới "KẾT THÚC KHỐI".
+     ===================================================================== -->
+<style>
+  #search-box-wrap{
+    position:fixed; top:12px; left:50%; transform:translateX(-50%);
+    z-index:900; width:min(420px, calc(100vw - 90px));
+  }
+  @media (max-width:760px){
+    #search-box-wrap{ left:auto; right:10px; transform:none; width:min(320px, calc(100vw - 60px)); }
+  }
+  #search-input-row{
+    display:flex; align-items:center; gap:6px;
+    background:var(--panel); border:1px solid var(--line); border-radius:10px;
+    box-shadow:0 2px 10px rgba(0,0,0,0.18);
+    padding:4px 6px 4px 12px;
+  }
+  #search-input-row span.icon{ color:var(--muted); font-size:15px; flex-shrink:0; }
+  #search-input{
+    flex:1; min-width:0; border:none; outline:none; background:transparent;
+    font-size:14px; padding:8px 2px; color:var(--ink); font-family:inherit;
+  }
+  #search-clear-btn{
+    border:none; background:none; color:var(--muted); font-size:16px;
+    cursor:pointer; padding:4px 6px; display:none; line-height:1; flex-shrink:0;
+  }
+  #search-go-btn{
+    border:none; background:var(--accent); color:#fff; border-radius:7px;
+    padding:8px 12px; font-size:13px; font-weight:600; cursor:pointer; flex-shrink:0;
+  }
+  #search-suggest-list{
+    margin-top:4px; background:var(--panel); border:1px solid var(--line);
+    border-radius:10px; box-shadow:0 4px 14px rgba(0,0,0,0.18);
+    max-height:280px; overflow-y:auto; display:none;
+  }
+  .search-suggest-item{
+    padding:10px 12px; font-size:13px; cursor:pointer; border-bottom:1px solid var(--line);
+    line-height:1.4;
+  }
+  .search-suggest-item:last-child{ border-bottom:none; }
+  .search-suggest-item:hover, .search-suggest-item.active{ background:#f1efe6; }
+  .search-suggest-item b{ color:var(--ink); }
+  .search-suggest-item .sub{ color:var(--muted); font-size:11.5px; margin-top:2px; }
+  #search-status{
+    font-size:11.5px; color:var(--muted); padding:6px 12px 2px; display:none;
+    background:var(--panel); border-radius:0 0 10px 10px;
+  }
+</style>
+<div id="search-box-wrap">
+  <div id="search-input-row">
+    <span class="icon">🔍</span>
+    <input id="search-input" type="text" placeholder="Tìm địa chỉ, tên đường, khu vực..." autocomplete="off">
+    <button id="search-clear-btn" title="Xóa">✕</button>
+    <button id="search-go-btn">Tìm</button>
+  </div>
+  <div id="search-suggest-list"></div>
+  <div id="search-status"></div>
+</div>
+<script>
+(function(){
+  const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search';
+  const inputEl = document.getElementById('search-input');
+  const clearBtn = document.getElementById('search-clear-btn');
+  const goBtn = document.getElementById('search-go-btn');
+  const listEl = document.getElementById('search-suggest-list');
+  const statusEl = document.getElementById('search-status');
+  const wrapEl = document.getElementById('search-box-wrap');
+
+  let debounceTimer = null;
+  let currentResults = [];
+  let activeIndex = -1;
+  let searchMarker = null;
+
+  // Khung tọa độ ưu tiên (viewbox): toàn TP.HCM mở rộng — chỉ để GỢI Ý sát
+  // nhu cầu khảo sát hơn, KHÔNG chặn cứng (không dùng bounded=1) nên vẫn tìm
+  // được địa chỉ ở tỉnh khác (Long An, Bình Dương...) nếu cần.
+  const HCM_VIEWBOX = '106.30,11.20,107.10,10.30'; // left,top,right,bottom
+
+  function clearMarker(){
+    if(searchMarker){ map.removeLayer(searchMarker); searchMarker = null; }
+  }
+
+  function hideList(){
+    listEl.style.display = 'none';
+    listEl.innerHTML = '';
+    activeIndex = -1;
+  }
+
+  function setStatus(text){
+    statusEl.textContent = text || '';
+    statusEl.style.display = text ? 'block' : 'none';
+  }
+
+  function highlightActive(){
+    listEl.querySelectorAll('.search-suggest-item').forEach(function(el, i){
+      el.classList.toggle('active', i === activeIndex);
+      if(i === activeIndex) el.scrollIntoView({block:'nearest'});
+    });
+  }
+
+  function renderResults(results){
+    currentResults = results;
+    activeIndex = -1;
+    if(!results.length){
+      listEl.style.display = 'none';
+      listEl.innerHTML = '';
+      return;
+    }
+    listEl.innerHTML = results.map(function(r, i){
+      const parts = (r.display_name || '').split(',');
+      const main = parts[0];
+      const rest = parts.slice(1).join(',').trim();
+      return '<div class="search-suggest-item" data-idx="' + i + '"><b>' + main + '</b>' +
+        (rest ? '<div class="sub">' + rest + '</div>' : '') + '</div>';
+    }).join('');
+    listEl.style.display = 'block';
+    listEl.querySelectorAll('.search-suggest-item').forEach(function(el){
+      el.addEventListener('click', function(){
+        const idx = parseInt(el.getAttribute('data-idx'), 10);
+        selectResult(currentResults[idx]);
+      });
+    });
+  }
+
+  function selectResult(result){
+    if(!result) return;
+    const lat = parseFloat(result.lat);
+    const lng = parseFloat(result.lon);
+    if(!isFinite(lat) || !isFinite(lng)) return;
+
+    clearMarker();
+    searchMarker = L.marker([lat, lng]).addTo(map);
+    const label = (result.display_name || '').split(',')[0];
+    searchMarker.bindPopup(
+      '<b>📍 ' + label + '</b><br><span style="color:#6b6559;font-size:12px;">' +
+      (result.display_name || '') + '</span>'
+    ).openPopup();
+
+    // Kết quả là khu vực lớn (quận/tỉnh/thành phố...) thì bay theo đúng
+    // bounding box của nó; còn địa chỉ cụ thể thì zoom mức 17 để thấy rõ
+    // đường/số nhà.
+    const bigAreaTypes = ['administrative', 'city', 'town', 'county', 'state', 'suburb'];
+    if(result.boundingbox && bigAreaTypes.indexOf(result.type) !== -1){
+      const bb = result.boundingbox.map(parseFloat); // [south, north, west, east]
+      map.fitBounds([[bb[0], bb[2]], [bb[1], bb[3]]]);
+    } else {
+      map.setView([lat, lng], 17);
+    }
+
+    hideList();
+    inputEl.value = label;
+    clearBtn.style.display = 'inline';
+    setStatus('');
+  }
+
+  async function fetchSuggestions(query){
+    if(!query || query.trim().length < 3){
+      hideList();
+      setStatus('');
+      return;
+    }
+    setStatus('Đang tìm "' + query + '"...');
+    try{
+      const params = new URLSearchParams({
+        format: 'json',
+        q: query,
+        addressdetails: '1',
+        limit: '7',
+        countrycodes: 'vn',
+        viewbox: HCM_VIEWBOX,
+        'accept-language': 'vi'
+      });
+      const res = await fetch(NOMINATIM_URL + '?' + params.toString(), {
+        headers: { 'Accept': 'application/json' }
+      });
+      if(!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      renderResults(data);
+      setStatus(data.length ? '' : 'Không tìm thấy kết quả nào cho "' + query + '".');
+    }catch(err){
+      setStatus('Không tra cứu được (lỗi mạng), thử lại sau.');
+      hideList();
+    }
+  }
+
+  inputEl.addEventListener('input', function(){
+    clearBtn.style.display = inputEl.value ? 'inline' : 'none';
+    if(debounceTimer) clearTimeout(debounceTimer);
+    const query = inputEl.value;
+    debounceTimer = setTimeout(function(){ fetchSuggestions(query); }, 400);
+  });
+
+  inputEl.addEventListener('keydown', function(e){
+    if(e.key === 'ArrowDown'){
+      e.preventDefault();
+      if(!currentResults.length) return;
+      activeIndex = Math.min(activeIndex + 1, currentResults.length - 1);
+      highlightActive();
+    } else if(e.key === 'ArrowUp'){
+      e.preventDefault();
+      if(!currentResults.length) return;
+      activeIndex = Math.max(activeIndex - 1, 0);
+      highlightActive();
+    } else if(e.key === 'Enter'){
+      e.preventDefault();
+      if(debounceTimer) clearTimeout(debounceTimer);
+      if(activeIndex >= 0 && currentResults[activeIndex]){
+        selectResult(currentResults[activeIndex]);
+      } else if(currentResults.length){
+        selectResult(currentResults[0]);
+      } else {
+        fetchSuggestions(inputEl.value).then(function(){
+          if(currentResults.length) selectResult(currentResults[0]);
+        });
+      }
+    } else if(e.key === 'Escape'){
+      hideList();
+    }
+  });
+
+  goBtn.addEventListener('click', function(){
+    if(debounceTimer) clearTimeout(debounceTimer);
+    fetchSuggestions(inputEl.value).then(function(){
+      if(currentResults.length) selectResult(currentResults[0]);
+    });
+  });
+
+  clearBtn.addEventListener('click', function(){
+    inputEl.value = '';
+    clearBtn.style.display = 'none';
+    hideList();
+    setStatus('');
+    clearMarker();
+    inputEl.focus();
+  });
+
+  // Bấm ra ngoài ô tìm kiếm thì chỉ ẩn danh sách gợi ý, không xóa nội dung đã gõ
+  document.addEventListener('click', function(e){
+    if(!wrapEl.contains(e.target)){ hideList(); }
+  });
+})();
+</script>
+<!-- =====================================================================
+     KẾT THÚC KHỐI: Tra cứu / tìm kiếm địa chỉ
+     ===================================================================== -->
 </body>
 </html>
