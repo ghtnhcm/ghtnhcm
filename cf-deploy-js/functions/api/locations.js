@@ -1,4 +1,4 @@
-import { eq, gt, lt, gte, lte, and, inArray, desc } from "drizzle-orm";
+import { eq, gt, lt, gte, lte, and, inArray } from "drizzle-orm";
 import { getDb } from "../../db/index.js";
 import { liveLocations, locationHistory } from "../../db/schema.js";
 
@@ -106,51 +106,72 @@ export const onRequestGet = async ({ request, env }) => {
   // window, not only the people currently online. Currently-online people
   // (in `rows`) are always included so their live-updating route shows too.
   //
-  // IMPORTANT: this used to run one D1 query per participant in a loop,
-  // which blows through Cloudflare Workers' subrequest limit once enough
-  // people have shared a location (each D1 call is a subrequest) and makes
-  // the whole endpoint return 503. Fetch every recent point in a single
-  // query instead and group it in JS.
-  const trailCutoff = new Date(Date.now() - TRAIL_VISIBILITY_MS);
-  const allPoints = await db
-    .select({
-      participantId: locationHistory.participantId,
-      name: locationHistory.name,
-      lat: locationHistory.lat,
-      lng: locationHistory.lng,
-      recordedAt: locationHistory.recordedAt,
-      sessionId: locationHistory.sessionId,
-    })
-    .from(locationHistory)
-    .where(gt(locationHistory.recordedAt, trailCutoff))
-    .orderBy(desc(locationHistory.recordedAt))
-    .limit(MAX_TOTAL_HISTORY_POINTS);
+  // PERFORMANCE NOTE (read before touching this again): this endpoint has
+  // twice hit Cloudflare Workers CPU/subrequest limits as the group grew:
+  //   1. First version ran one D1 query per participant in a loop → too many
+  //      subrequests → 503.
+  //   2. Second version pulled every point from the last 24h for everyone
+  //      into one query, then filtered/grouped in JS → too much data to
+  //      parse and walk in JS → exceeded the free plan's 10ms CPU budget
+  //      (Cloudflare error 1102) once the group hit ~14 people.
+  // This version pushes the "only the current session per participant"
+  // filtering into SQL itself (D1/SQLite query time doesn't count against
+  // Worker CPU time — only parsing/looping in JS does), via two small raw
+  // queries instead of drizzle's query builder, so only the points actually
+  // needed ever reach the Worker's JS.
+  const trailCutoffSec = Math.floor((Date.now() - TRAIL_VISIBILITY_MS) / 1000);
 
-  // allPoints is newest-first across everyone. Walk it once, and for each
-  // participant keep only the points belonging to their most recent session
-  // (the first sessionId we see for that participant, since we're going
-  // newest-first).
-  const trailsBuild = new Map();
-  for (const p of allPoints) {
-    let entry = trailsBuild.get(p.participantId);
-    if (!entry) {
-      entry = { name: p.name, sessionId: p.sessionId, points: [] };
-      trailsBuild.set(p.participantId, entry);
-    }
-    if (p.sessionId !== entry.sessionId) continue; // older session, ignore
-    entry.points.push({ lat: p.lat, lng: p.lng, t: p.recordedAt.toISOString() });
-  }
+  // Step 1: one row per participant — their most recent session. Small
+  // result set (one row per person, not per point).
+  const latestSessions = (
+    await env.DB.prepare(
+      `SELECT lh.participant_id AS participantId, lh.session_id AS sessionId, lh.name AS name
+       FROM location_history lh
+       INNER JOIN (
+         SELECT participant_id, MAX(recorded_at) AS max_recorded_at
+         FROM location_history
+         WHERE recorded_at > ?
+         GROUP BY participant_id
+       ) latest
+         ON lh.participant_id = latest.participant_id
+        AND lh.recorded_at = latest.max_recorded_at`
+    )
+      .bind(trailCutoffSec)
+      .all()
+  ).results ?? [];
 
   const trails = {};
-  for (const [participantId, entry] of trailsBuild) {
-    entry.points.reverse(); // back to chronological order
-    trails[participantId] = { name: entry.name, points: entry.points };
-  }
-  // Currently-online people (in `rows`) with no recent history rows yet
-  // (e.g. just started sharing) still get an (empty) trail entry so the
-  // frontend can rely on every online participant having one.
-  for (const row of rows) {
-    if (!trails[row.id]) trails[row.id] = { name: row.name, points: [] };
+  for (const row of rows) trails[row.id] = { name: row.name, points: [] };
+
+  if (latestSessions.length > 0) {
+    const sessionIds = latestSessions.map((s) => s.sessionId);
+    const participantBySession = new Map(latestSessions.map((s) => [s.sessionId, { id: s.participantId, name: s.name }]));
+
+    // Step 2: only the points belonging to those current sessions — not
+    // every point from the last 24h across every past session.
+    const placeholders = sessionIds.map(() => "?").join(",");
+    const points = (
+      await env.DB.prepare(
+        `SELECT session_id AS sessionId, lat, lng, recorded_at AS recordedAt
+         FROM location_history
+         WHERE session_id IN (${placeholders})
+         ORDER BY recorded_at ASC
+         LIMIT ?`
+      )
+        .bind(...sessionIds, MAX_TOTAL_HISTORY_POINTS)
+        .all()
+    ).results ?? [];
+
+    for (const p of points) {
+      const participant = participantBySession.get(p.sessionId);
+      if (!participant) continue;
+      if (!trails[participant.id]) trails[participant.id] = { name: participant.name, points: [] };
+      trails[participant.id].points.push({
+        lat: p.lat,
+        lng: p.lng,
+        t: new Date(p.recordedAt * 1000).toISOString(),
+      });
+    }
   }
 
   return Response.json({ locations: rows, trails });
