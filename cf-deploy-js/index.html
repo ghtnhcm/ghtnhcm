@@ -2439,16 +2439,30 @@ document.getElementById('btn-admin-wipe-leads').addEventListener('click', async 
     });
   }
 
-  function cellValue(row, index){
+  // Dùng cho các cột chữ (Tên/SĐT/Địa chỉ/Kết quả huấn luyện): ưu tiên giá trị
+  // đã định dạng (f) — số điện thoại lưu dạng Text/định dạng đặc biệt trong
+  // Sheet thường có v rỗng hoặc mất số 0 đầu, trong khi f luôn giữ đúng chuỗi
+  // hiển thị trên Sheet.
+  function cellText(row, index){
     const c = row.c || [];
     const cell = c[index];
     if (!cell) return '';
-    // Ưu tiên giá trị đã định dạng (f) — số điện thoại lưu dạng Text/định dạng
-    // đặc biệt trong Sheet thường có v rỗng hoặc mất số 0 đầu, trong khi f
-    // luôn giữ đúng chuỗi hiển thị trên Sheet.
     if (cell.f !== undefined && cell.f !== null && cell.f !== '') return cell.f;
     if (cell.v !== undefined && cell.v !== null) return cell.v;
     return '';
+  }
+
+  // Dùng riêng cho tọa độ (Vĩ độ/Kinh độ): LUÔN lấy giá trị số gốc (v), không
+  // bao giờ dùng f. Lý do: nếu Sheet định dạng số theo locale (vd. dấu phẩy
+  // làm phân cách thập phân kiểu Việt Nam), chuỗi f có thể là "10,823" —
+  // parseFloat() đọc chuỗi đó cho ra kết quả sai lệch hoàn toàn (dừng ở dấu
+  // phẩy hoặc hiểu nhầm dấu chấm phân cách hàng nghìn), khiến marker bị đặt
+  // sai vị trí, thường là văng ra ngoài phạm vi bản đồ.
+  function cellNumber(row, index){
+    const c = row.c || [];
+    const cell = c[index];
+    if (!cell || cell.v === undefined || cell.v === null || cell.v === '') return NaN;
+    return typeof cell.v === 'number' ? cell.v : parseFloat(cell.v);
   }
 
   function buildPopupEl(name, phone, address){
@@ -2486,18 +2500,16 @@ document.getElementById('btn-admin-wipe-leads').addEventListener('click', async 
       let shown = 0, skippedNoCoord = 0, skippedFiltered = 0;
 
       for (const row of rows) {
-        const result = String(cellValue(row, COL.result)).trim();
+        const result = String(cellText(row, COL.result)).trim();
         if (result === EXCLUDE_RESULT) { skippedFiltered++; continue; }
 
-        const latRaw = cellValue(row, COL.lat);
-        const lngRaw = cellValue(row, COL.lng);
-        const lat = parseFloat(latRaw);
-        const lng = parseFloat(lngRaw);
+        const lat = cellNumber(row, COL.lat);
+        const lng = cellNumber(row, COL.lng);
         if (!isFinite(lat) || !isFinite(lng) || (lat === 0 && lng === 0)) { skippedNoCoord++; continue; }
 
-        const name = String(cellValue(row, COL.name) || '').trim();
-        const phone = String(cellValue(row, COL.phone) || '').trim();
-        const address = String(cellValue(row, COL.address) || '').trim();
+        const name = String(cellText(row, COL.name) || '').trim();
+        const phone = String(cellText(row, COL.phone) || '').trim();
+        const address = String(cellText(row, COL.address) || '').trim();
 
         const marker = L.marker([lat, lng], { icon: candidateIcon() });
         marker.bindPopup(buildPopupEl(name, phone, address));
