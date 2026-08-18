@@ -577,8 +577,10 @@ L.control.scale({metric:true, imperial:false, position:'bottomleft'}).addTo(map)
 const layerGroups = {};
 
 // Cu Chi boundary (outline only) — vùng khảo sát trung tâm, vẫn giữ lại làm mốc tham chiếu
+// Màu xanh dương đậm + nét dày hơn hẳn các ranh giới khác (TDM/Long An dùng weight 3.5,
+// nhiều màu khác nhau) để ranh giới Củ Chi luôn nổi bật, không bị lẫn vào các ranh giới phụ.
 const cuchiLayer = L.geoJSON(DATA.cuchi, {
-  style: {color:'#b3541e', weight:3, fill:false, opacity:0.95, className: 'route-line'}
+  style: {color:'#0d47a1', weight:6, fill:false, opacity:1, className: 'route-line'}
 }).addTo(map);
 layerGroups['cuchi'] = cuchiLayer;
 
@@ -2369,6 +2371,9 @@ document.getElementById('btn-admin-wipe-leads').addEventListener('click', async 
 
     extraLayerGroups[def.key] = group;
     if(def.defaultOn) group.addTo(map);
+    // Ranh giới Củ Chi luôn phải nổi trên cùng, kể cả khi các ranh giới bổ sung
+    // (TDM/Long An) được bật sau — đưa lên trước mỗi khi thêm 1 nhóm mới.
+    if(typeof cuchiLayer !== 'undefined' && map.hasLayer(cuchiLayer)) cuchiLayer.bringToFront();
 
     const row = document.createElement('div');
     row.className = 'layer-row';
