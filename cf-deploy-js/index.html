@@ -2442,8 +2442,13 @@ document.getElementById('btn-admin-wipe-leads').addEventListener('click', async 
   function cellValue(row, index){
     const c = row.c || [];
     const cell = c[index];
-    if (!cell || cell.v === undefined || cell.v === null) return '';
-    return cell.v;
+    if (!cell) return '';
+    // Ưu tiên giá trị đã định dạng (f) — số điện thoại lưu dạng Text/định dạng
+    // đặc biệt trong Sheet thường có v rỗng hoặc mất số 0 đầu, trong khi f
+    // luôn giữ đúng chuỗi hiển thị trên Sheet.
+    if (cell.f !== undefined && cell.f !== null && cell.f !== '') return cell.f;
+    if (cell.v !== undefined && cell.v !== null) return cell.v;
+    return '';
   }
 
   function buildPopupEl(name, phone, address){
