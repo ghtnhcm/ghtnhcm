@@ -327,6 +327,13 @@
       <div id="lead-list"></div>
     </details>
 
+    <details class="field-group" open>
+      <summary>📋 Ứng viên từ Google Sheet</summary>
+      <div class="legend-note" style="margin-top:2px;">Tự động lấy vị trí ứng viên từ Google Sheet (cột Vĩ độ/Kinh độ), chỉ hiện người có Kết quả huấn luyện khác "Đăng ký hoạt động".</div>
+      <button id="btn-sheet-refresh" class="field-btn" style="margin-top:8px;">🔄 Tải / làm mới danh sách ứng viên</button>
+      <div id="sheet-candidate-status" class="legend-note" style="margin-top:6px;"></div>
+    </details>
+
     <div class="section-title">Các địa điểm tiện ích</div>
 
     <div class="legend-note" style="margin:0 0 4px;">Dữ liệu thật lấy từ OpenStreetMap (miễn phí, không cần API key), phủ toàn TP.HCM (gồm cả Củ Chi). Mở từng mục dưới đây và bấm nút tải riêng — chỉ tải đúng loại bạn cần, đỡ chờ lâu.</div>
@@ -2398,5 +2405,124 @@ document.getElementById('btn-admin-wipe-leads').addEventListener('click', async 
 <!-- ===================================================================== 
      KẾT THÚC KHỐI: Ranh giới bổ sung (Gửi HCM + Long An)
      ===================================================================== -->
+
+<!-- =====================================================================
+     KHỐI: Ứng viên từ Google Sheet
+     Lấy trực tiếp từ Google Sheet qua endpoint gviz (không cần backend,
+     không cần API key) — sheet phải để chế độ chia sẻ "Anyone with the
+     link can view". Cột dùng: D=Tên, I=SĐT, N=Địa chỉ, O=Vĩ độ, P=Kinh độ,
+     AP=Kết quả huấn luyện (loại bỏ dòng có giá trị đúng bằng "Đăng ký hoạt động").
+     Lưu ý: cách lấy trực tiếp từ trình duyệt này để lộ toàn bộ nội dung sheet
+     (kể cả các cột khác như SĐT/CCCD nếu có) cho bất kỳ ai mở tab Network —
+     đây là lựa chọn đã được xác nhận, ưu tiên đơn giản hơn là giấu qua backend.
+     ===================================================================== -->
+<script>
+(function(){
+  const SHEET_ID = '1N7x8rZCBEg2JY9eDBYcNbn2Y0sSWsqyTH99xRcRWsrw';
+  const SHEET_GID = '661660809';
+  const SHEET_URL = 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/gviz/tq?tqx=out:json&gid=' + SHEET_GID;
+
+  // Chỉ số cột theo A=0,B=1,...,Z=25,AA=26,...  => D=3, I=8, N=13, O=14, P=15, AP=41
+  const COL = { name: 3, phone: 8, address: 13, lat: 14, lng: 15, result: 41 };
+  const EXCLUDE_RESULT = 'Đăng ký hoạt động';
+
+  const candidateLayer = L.layerGroup().addTo(map);
+  if (typeof layerGroups !== 'undefined') layerGroups['sheet_candidates'] = candidateLayer;
+
+  function candidateIcon(){
+    return L.divIcon({
+      className: 'poi-div-icon',
+      html: '<div style="background:#00897b;width:26px;height:26px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;font-size:14px;line-height:1;color:#fff;">🧑‍💼</div>',
+      iconSize: [26, 26],
+      iconAnchor: [13, 13],
+      popupAnchor: [0, -13]
+    });
+  }
+
+  function cellValue(row, index){
+    const c = row.c || [];
+    const cell = c[index];
+    if (!cell || cell.v === undefined || cell.v === null) return '';
+    return cell.v;
+  }
+
+  function buildPopupEl(name, phone, address){
+    const wrap = document.createElement('div');
+    const b = document.createElement('b');
+    b.textContent = name || '(Không tên)';
+    wrap.appendChild(b);
+    if (phone) {
+      wrap.appendChild(document.createElement('br'));
+      wrap.appendChild(document.createTextNode('📞 ' + phone));
+    }
+    if (address) {
+      wrap.appendChild(document.createElement('br'));
+      wrap.appendChild(document.createTextNode('📍 ' + address));
+    }
+    return wrap;
+  }
+
+  async function loadCandidatesFromSheet(){
+    const statusEl = document.getElementById('sheet-candidate-status');
+    const btn = document.getElementById('btn-sheet-refresh');
+    if (btn) btn.disabled = true;
+    if (statusEl) statusEl.textContent = 'Đang tải dữ liệu từ Google Sheet...';
+    try {
+      const res = await fetch(SHEET_URL, { cache: 'no-store' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const text = await res.text();
+      const start = text.indexOf('{');
+      const end = text.lastIndexOf('}');
+      if (start === -1 || end === -1) throw new Error('Không đọc được dữ liệu trả về (sheet có đang public không?)');
+      const data = JSON.parse(text.substring(start, end + 1));
+      const rows = (data.table && data.table.rows) || [];
+
+      candidateLayer.clearLayers();
+      let shown = 0, skippedNoCoord = 0, skippedFiltered = 0;
+
+      for (const row of rows) {
+        const result = String(cellValue(row, COL.result)).trim();
+        if (result === EXCLUDE_RESULT) { skippedFiltered++; continue; }
+
+        const latRaw = cellValue(row, COL.lat);
+        const lngRaw = cellValue(row, COL.lng);
+        const lat = parseFloat(latRaw);
+        const lng = parseFloat(lngRaw);
+        if (!isFinite(lat) || !isFinite(lng) || (lat === 0 && lng === 0)) { skippedNoCoord++; continue; }
+
+        const name = String(cellValue(row, COL.name) || '').trim();
+        const phone = String(cellValue(row, COL.phone) || '').trim();
+        const address = String(cellValue(row, COL.address) || '').trim();
+
+        const marker = L.marker([lat, lng], { icon: candidateIcon() });
+        marker.bindPopup(buildPopupEl(name, phone, address));
+        candidateLayer.addLayer(marker);
+        shown++;
+      }
+
+      const cntEl = document.getElementById('cnt-sheet_candidates');
+      if (cntEl) cntEl.textContent = '(' + shown + ')';
+
+      if (statusEl) {
+        let msg = 'Đã tải ' + shown + ' ứng viên.';
+        if (skippedFiltered) msg += ' Đã bỏ ' + skippedFiltered + ' người "' + EXCLUDE_RESULT + '".';
+        if (skippedNoCoord) msg += ' Bỏ qua ' + skippedNoCoord + ' dòng thiếu tọa độ.';
+        statusEl.textContent = msg;
+      }
+    } catch (err) {
+      console.error('Lỗi tải ứng viên từ Google Sheet:', err);
+      if (statusEl) statusEl.textContent = '⚠️ Lỗi tải dữ liệu: ' + err.message + ' — kiểm tra sheet đã chia sẻ "Anyone with the link can view" chưa.';
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  const btn = document.getElementById('btn-sheet-refresh');
+  if (btn) btn.addEventListener('click', loadCandidatesFromSheet);
+
+  // Tải sẵn 1 lần khi mở trang.
+  loadCandidatesFromSheet();
+})();
+</script>
 </body>
 </html>
