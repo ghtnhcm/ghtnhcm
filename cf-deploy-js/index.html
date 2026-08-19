@@ -2423,7 +2423,7 @@ document.getElementById('btn-admin-wipe-leads').addEventListener('click', async 
   const SHEET_URL = 'https://docs.google.com/spreadsheets/d/' + SHEET_ID + '/gviz/tq?tqx=out:json&gid=' + SHEET_GID;
 
   // Chỉ số cột theo A=0,B=1,...,Z=25,AA=26,...  => D=3, I=8, N=13, O=14, P=15, AP=41
-  const COL = { name: 3, phone: 8, address: 13, lat: 14, lng: 15, result: 41, reason: 32, birthYear: 7 };
+  const COL = { name: 3, phone: 8, address: 13, lat: 14, lng: 15, result: 41, reason: 32, birthYear: 7, checkCol: 33 };
   const EXCLUDE_RESULT = 'Đăng ký hoạt động';
 
   const candidateLayer = L.layerGroup().addTo(map);
