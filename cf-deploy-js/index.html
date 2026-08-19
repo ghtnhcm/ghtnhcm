@@ -2507,11 +2507,11 @@ document.getElementById('btn-admin-wipe-leads').addEventListener('click', async 
       let shown = 0, skippedNoCoord = 0, skippedFiltered = 0;
 
       for (const row of rows) {
- const result = String(cellText(row, COL.result)).trim();
-if (result === EXCLUDE_RESULT) { skippedFiltered++; continue; }
+  const result = String(cellText(row, COL.result)).trim();
+  if (result === EXCLUDE_RESULT) { skippedFiltered++; continue; }
 
-const checkColValue = String(cellText(row, COL.checkCol)).trim();
-if (!checkColValue) { skippedFiltered++; continue; }
+  const checkColValue = String(cellText(row, COL.checkCol)).trim();
+  if (!checkColValue) { skippedFiltered++; continue; }
 
   const lat = cellNumber(row, COL.lat);
   const lng = cellNumber(row, COL.lng);
