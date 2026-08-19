@@ -534,13 +534,15 @@ const map = L.map('map', {zoomControl:true, preferCanvas:true}).setView([10.98, 
 // 1) Đường phố chi tiết (OpenStreetMap chuẩn) — hiển thị số nhà khi zoom sâu (~z18-19) ở khu vực đã có dữ liệu
 const layerStreetDetailed = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   maxZoom: 19,
-  attribution: '&copy; OpenStreetMap contributors'
+  attribution: '&copy; OpenStreetMap contributors',
+  crossOrigin: true
 });
 
 // 2) Vệ tinh (Esri World Imagery) — ảnh thực địa, không có số nhà
 const layerSatellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
   maxZoom: 19,
-  attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community'
+  attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community',
+  crossOrigin: true
 });
 
 // 3) Vệ tinh + tên đường (Esri Imagery + lớp Transportation đè tên đường/số đường lên trên)
@@ -548,27 +550,22 @@ const layerSatellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/
 // và tên địa danh — KHÔNG có tên đường. Muốn thấy tên đường phải dùng "Reference/World_Transportation".
 const layerSatelliteLabels = L.layerGroup([
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    maxZoom: 19,
-    attribution: 'Tiles &copy; Esri'
+    maxZoom: 19, attribution: 'Tiles &copy; Esri', crossOrigin: true
   }),
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
-    maxZoom: 19,
-    attribution: 'Labels &copy; Esri'
+    maxZoom: 19, attribution: 'Labels &copy; Esri', crossOrigin: true
   }),
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}', {
-    maxZoom: 19,
-    attribution: 'Roads &copy; Esri'
+    maxZoom: 19, attribution: 'Roads &copy; Esri', crossOrigin: true
   })
 ]);
 
 // 4) Bản đồ đơn giản (CartoDB Positron) — nền sáng, dễ nhìn các lớp khoanh vùng chồng lên
 const layerSimple = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
   maxZoom: 19,
-  attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
+  attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+  crossOrigin: true
 });
-
-// Mặc định: Đường phố chi tiết
-layerStreetDetailed.addTo(map);
 
 const baseMaps = {
   "🗺️ Đường phố chi tiết (có số nhà)": layerStreetDetailed,
@@ -2945,16 +2942,29 @@ document.getElementById('btn-admin-wipe-leads').addEventListener('click', async 
     const pxW = Math.max(1, Math.round(widthM / mpp));
     const pxH = Math.max(1, Math.round(heightM / mpp));
 
-    const MAX_DIM = 8000;
-    if(pxW > MAX_DIM || pxH > MAX_DIM){
-      if(!confirm('Ảnh cần xuất có kích thước ' + pxW + ' x ' + pxH + ' điểm ảnh — vượt mức khuyến nghị (' + MAX_DIM + 'px mỗi cạnh), có thể làm trình duyệt chậm hoặc lỗi.\n\nVẫn tiếp tục?')){
-        return;
-      }
+    // Giới hạn nghiêm ngặt hơn — vùng quá lớn gần như chắc chắn sẽ treo trình
+    // duyệt hoặc hết bộ nhớ khi html2canvas dựng canvas khổng lồ.
+    const MAX_DIM = 6000;
+    const MAX_PIXELS = 25000000; // 25 megapixel
+    if(pxW > MAX_DIM || pxH > MAX_DIM || pxW * pxH > MAX_PIXELS){
+      alert(
+        'Vùng đang xem quá rộng so với tỉ lệ 1:' + scaleDen + ' đã chọn ' +
+        '(ảnh cần tới ' + pxW + ' x ' + pxH + ' điểm ảnh).\n\n' +
+        'Hãy làm 1 trong 2 cách rồi thử lại:\n' +
+        '- Zoom gần lại vào đúng khu vực cần xuất, hoặc\n' +
+        '- Chọn tỉ lệ thưa hơn (1:1000, 1:2000...)'
+      );
+      return;
     }
 
     const maxZ = (map.options && map.options.maxZoom) ? map.options.maxZoom : 19;
     const rawZoom = Math.log2(156543.03392804097 * Math.cos(center.lat * Math.PI / 180) / mpp);
     const zoom = Math.max(1, Math.min(maxZ, rawZoom));
+
+    // Ghi nhớ nền bản đồ đang dùng để trả lại sau khi xuất xong
+    const baseLayerCandidates = [layerStreetDetailed, layerSatellite, layerSatelliteLabels, layerSimple];
+    const originalBaseLayer = baseLayerCandidates.find(function(l){ return map.hasLayer(l); }) || layerStreetDetailed;
+    const usingSimpleAlready = originalBaseLayer === layerSimple;
 
     const savedWidth = mapEl.style.width;
     const savedHeight = mapEl.style.height;
@@ -2965,7 +2975,15 @@ document.getElementById('btn-admin-wipe-leads').addEventListener('click', async 
 
     showPrep('Đang dựng ảnh (' + pxW + ' x ' + pxH + 'px) — vui lòng đợi, vùng lớn có thể mất khá lâu...');
 
-    document.body.classList.add('printing'); // tự ẩn sidebar/nút điều khiển (dùng lại CSS in sẵn có)
+    document.body.classList.add('printing');
+
+    // Chuyển sang nền CORS-an toàn trong lúc chụp (CartoDB) để canvas không
+    // bị "tainted" — đây là nguyên nhân chính khiến ảnh xuất ra bị trắng/lỗi.
+    if(!usingSimpleAlready){
+      map.removeLayer(originalBaseLayer);
+      layerSimple.addTo(map);
+    }
+
     map.options.zoomSnap = 0;
     map.options.zoomDelta = 0.25;
     mapEl.style.width = pxW + 'px';
@@ -2979,6 +2997,10 @@ document.getElementById('btn-admin-wipe-leads').addEventListener('click', async 
       mapEl.style.height = savedHeight;
       map.options.zoomSnap = savedZoomSnap;
       map.options.zoomDelta = savedZoomDelta;
+      if(!usingSimpleAlready){
+        map.removeLayer(layerSimple);
+        originalBaseLayer.addTo(map);
+      }
       map.setView(savedCenter, savedZoom, { animate: false });
       map.invalidateSize();
       hidePrep();
@@ -2997,7 +3019,7 @@ document.getElementById('btn-admin-wipe-leads').addEventListener('click', async 
       }).then(function(canvas){
         canvas.toBlob(function(blob){
           if(!blob){
-            alert('Không tạo được file ảnh (có thể do nền bản đồ chặn CORS). Hãy thử đổi sang "⬜ Bản đồ đơn giản" rồi xuất lại.');
+            alert('Không tạo được file ảnh. Thử lại — nếu vẫn lỗi, dùng nút "In / tải bản đồ chi tiết" (PDF) thay thế, cách đó không bị giới hạn CORS.');
             restore();
             return;
           }
@@ -3010,15 +3032,28 @@ document.getElementById('btn-admin-wipe-leads').addEventListener('click', async 
           restore();
         }, 'image/png');
       }).catch(function(err){
-        alert('Xuất ảnh thất bại: ' + (err && err.message ? err.message : err) + '\nGợi ý: thử đổi nền bản đồ sang "⬜ Bản đồ đơn giản" rồi thử lại.');
+        alert(
+          'Xuất ảnh thất bại: ' + (err && err.message ? err.message : err) +
+          '\n\nGợi ý: dùng nút "In / tải bản đồ chi tiết" (PDF) thay thế — cách đó ' +
+          'không dùng canvas nên không bị chặn bởi CORS.'
+        );
         restore();
       });
     }
 
-    // đợi tile ở khung nhìn/độ phóng mới tải xong trước khi chụp
-    const waitMs = 1600 + Math.min(6000, Math.round((pxW * pxH) / 300000));
-    setTimeout(doCapture, waitMs);
-  }
+    // Đợi tile của nền vừa chuyển tải xong thật sự (thay vì đoán thời gian
+    // cố định) — có mốc thời gian chờ tối đa để không treo vô thời hạn nếu
+    // sự kiện 'load' không bắn ra.
+    let capStarted = false;
+    function startOnce(){
+      if(capStarted) return;
+      capStarted = true;
+      doCapture();
+    }
+    layerSimple.once('load', startOnce);
+    const maxWaitMs = 2000 + Math.min(15000, Math.round((pxW * pxH) / 150000));
+    setTimeout(startOnce, maxWaitMs);
+}
 })();
 </script>
 <!-- KẾT THÚC KHỐI: Xuất ảnh toàn khu vực giữ đúng tỉ lệ -->
