@@ -2513,9 +2513,6 @@ if (result === EXCLUDE_RESULT) { skippedFiltered++; continue; }
 const checkColValue = String(cellText(row, COL.checkCol)).trim();
 if (!checkColValue) { skippedFiltered++; continue; }
 
-  const checkColValue = String(cellText(row, COL.checkCol)).trim();
-  if (!checkColValue) { skippedFiltered++; continue; }
-
   const lat = cellNumber(row, COL.lat);
   const lng = cellNumber(row, COL.lng);
   if (!isFinite(lat) || !isFinite(lng) || (lat === 0 && lng === 0)) { skippedNoCoord++; continue; }
