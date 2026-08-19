@@ -2807,230 +2807,156 @@ document.getElementById('btn-admin-wipe-leads').addEventListener('click', async 
 </body>
 </html><!--
   ============================================================================
-  KHỐI: In bản đồ đúng tỉ lệ (1:100 / 1:200 / 1:500 / 1:1000 / 1:2000)
-  CÁCH DÙNG: Mở file bản đồ HTML hiện tại của bạn bằng trình soạn thảo bất kỳ,
-  copy TOÀN BỘ nội dung file này, dán vào NGAY TRƯỚC dòng </body> (dán sau
-  tất cả các khối script khác đang có, kể cả khối "Tra cứu / tìm kiếm địa chỉ"
-  ở cuối file), rồi lưu lại. Không cần sửa gì thêm ở chỗ khác trong file.
-
-  MUỐN GỠ BỎ: xóa toàn bộ đoạn từ dòng comment "BẮT ĐẦU KHỐI" đến dòng
-  comment "KẾT THÚC KHỐI" bên dưới là xong.
-
-  LƯU Ý VỀ TỈ LỆ 1:100: đây là tỉ lệ rất lớn — mỗi tờ A4 chỉ thể hiện được
-  khoảng 19x27m ngoài thực địa. Ảnh nền (vệ tinh/đường phố) có thể bị mờ vì
-  vượt quá độ phân giải tối đa mà máy chủ bản đồ cung cấp — đây là giới hạn
-  vật lý của dữ liệu bản đồ web, không phải lỗi của công cụ này. Các đường
-  ranh giới, ghi chú, điểm khảo sát (vẽ bằng vector) vẫn hiển thị sắc nét
-  bình thường ở mọi tỉ lệ.
-
-  QUAN TRỌNG: khi hộp thoại in của trình duyệt hiện ra, phải chọn tỉ lệ in là
-  "Kích thước thật / 100% / Actual size" — KHÔNG chọn "Vừa khít trang / Fit to
-  page", nếu không tỉ lệ in ra giấy sẽ bị sai so với tỉ lệ đã chọn.
-  ============================================================================
--->
-<!-- BẮT ĐẦU KHỐI: In bản đồ đúng tỉ lệ -->
-<style>
-  #truescale-modal-overlay{
-    display:none;position:fixed;inset:0;background:rgba(28,35,33,0.45);
-    z-index:1000;align-items:center;justify-content:center;padding:16px;
-  }
-  #truescale-modal-overlay.open{display:flex;}
-  #truescale-modal-box{
-    background:var(--panel, #fff);border-radius:12px;max-width:380px;width:100%;
-    padding:20px;box-shadow:0 10px 30px rgba(0,0,0,0.25);max-height:88vh;overflow-y:auto;
-    position:relative;
-  }
-  #truescale-modal-box h2{font-size:16px;margin:0 0 4px;color:var(--ink, #1c2321);}
-  #truescale-modal-box .legend-note{font-size:11.5px;color:var(--muted, #6b6559);line-height:1.5;margin-bottom:12px;}
-  #truescale-modal-box .modal-field{margin-bottom:12px;}
-  #truescale-modal-box .modal-field label{display:block;font-size:12px;color:var(--muted, #6b6559);margin-bottom:4px;font-weight:600;}
-  #truescale-modal-box select{
-    width:100%;padding:8px 9px;border:1px solid var(--line, #d8d2c2);border-radius:7px;
-    background:var(--panel, #fff);color:var(--ink, #1c2321);font-size:13px;font-family:inherit;
-  }
-  #truescale-modal-box .modal-actions{display:flex;gap:8px;margin-top:16px;}
-  #truescale-modal-box .field-btn{
-    flex:1;padding:10px 12px;border-radius:8px;border:1px solid var(--accent, #b3541e);
-    background:var(--accent, #b3541e);color:#fff;font-size:13.5px;font-weight:600;cursor:pointer;
-  }
-  #truescale-modal-box .field-btn-secondary{background:#fff;color:var(--accent2, #2f5d50);border:1px solid var(--accent2, #2f5d50);}
-  #truescale-modal-box .modal-close-x{
-    position:absolute;top:14px;right:16px;border:none;background:none;
-    font-size:18px;color:var(--muted, #6b6559);cursor:pointer;line-height:1;
-  }
-  #truescale-scale-summary{
-    background:#faf8f2;border:1px solid var(--line, #d8d2c2);border-radius:8px;
-    padding:8px 10px;font-size:12px;color:var(--ink, #1c2321);margin-bottom:12px;line-height:1.5;
-  }
-</style>
-
-<div id="truescale-modal-overlay">
-  <div id="truescale-modal-box">
-    <button type="button" class="modal-close-x" id="truescale-modal-close">✕</button>
-    <h2>📐 In bản đồ đúng tỉ lệ</h2>
+  <!-- ============================================================
+     KHỐI: Xuất TOÀN BỘ khu vực đang xem thành 1 ảnh lớn duy nhất
+     - Giữ đúng tỉ lệ đã chọn (VD 1:100) trên TOÀN bộ ảnh, không
+       chia thành nhiều trang như khi in.
+     - Vùng xuất = đúng khung nhìn hiện tại trên màn hình → hãy
+       zoom/kéo bản đồ tới đúng khu vực cần trước khi bấm xuất.
+     - Dán khối này SAU khối "In bản đồ đúng tỉ lệ", trước </body>.
+     - Cần thư viện html2canvas (tải qua CDN, chỉ tải khi bấm dùng).
+     - MUỐN GỠ: xóa từ "BẮT ĐẦU KHỐI" đến "KẾT THÚC KHỐI" bên dưới.
+     ============================================================ -->
+<!-- BẮT ĐẦU KHỐI: Xuất ảnh toàn khu vực giữ đúng tỉ lệ -->
+<div id="bigexport-modal-overlay" class="modal-overlay">
+  <div class="modal-box" id="bigexport-modal-box">
+    <button type="button" class="modal-close-x" id="bigexport-modal-close">✕</button>
+    <h2>🖼️ Xuất ảnh toàn khu vực (giữ tỉ lệ)</h2>
     <div class="legend-note">
-      Dùng để in giấy mang đi khảo sát đo đạc thực địa, đúng theo tỉ lệ bản vẽ
-      (VD 1cm trên giấy = 1m ngoài thực địa với tỉ lệ 1:100). Vùng in sẽ lấy
-      quanh vị trí đang xem giữa màn hình — hãy zoom/di chuyển bản đồ tới đúng
-      khu vực cần in trước khi bấm "In".
+      Xuất toàn bộ khung nhìn hiện tại thành MỘT file ảnh PNG duy nhất,
+      giữ đúng tỉ lệ trên toàn ảnh (không chia trang). Hãy zoom/kéo bản đồ
+      tới đúng vùng cần xuất trước khi bấm nút bên dưới.
     </div>
     <div class="modal-field">
-      <label for="truescale-field-scale">Tỉ lệ bản đồ</label>
-      <select id="truescale-field-scale">
-        <option value="100">1 : 100 (rất chi tiết — mỗi A4 ≈ 19 x 27m, ảnh nền có thể mờ)</option>
-        <option value="200">1 : 200 (mỗi A4 ≈ 39 x 54m)</option>
-        <option value="500" selected>1 : 500 (mỗi A4 ≈ 97 x 136m — khuyến nghị, ảnh nền còn rõ)</option>
-        <option value="1000">1 : 1000 (mỗi A4 ≈ 194 x 271m)</option>
-        <option value="2000">1 : 2000 (mỗi A4 ≈ 388 x 543m)</option>
+      <label for="bigexport-field-scale">Tỉ lệ bản đồ</label>
+      <select id="bigexport-field-scale">
+        <option value="100">1 : 100 (rất chi tiết, ảnh có thể rất lớn/nặng)</option>
+        <option value="200">1 : 200</option>
+        <option value="500" selected>1 : 500 (khuyến nghị cho vùng rộng)</option>
+        <option value="1000">1 : 1000</option>
+        <option value="2000">1 : 2000</option>
       </select>
     </div>
-    <div class="modal-field">
-      <label for="truescale-field-paper">Khổ giấy</label>
-      <select id="truescale-field-paper">
-        <option value="a4" selected>A4 (210 x 297mm)</option>
-        <option value="a3">A3 (297 x 420mm)</option>
-      </select>
-    </div>
-    <div class="modal-field">
-      <label for="truescale-field-orientation">Hướng giấy</label>
-      <select id="truescale-field-orientation">
-        <option value="portrait" selected>Dọc</option>
-        <option value="landscape">Ngang</option>
-      </select>
-    </div>
-    <div id="truescale-scale-summary"></div>
+    <div id="bigexport-scale-summary" class="legend-note" style="background:#faf8f2;border:1px solid var(--line);border-radius:8px;padding:8px 10px;"></div>
     <div class="legend-note" style="color:#b3541e;font-weight:600;">
-      ⚠️ Khi hộp thoại in hiện ra, chọn tỉ lệ in là "Kích thước thật / 100% / Actual size" —
-      KHÔNG chọn "Vừa khít trang / Fit to page", nếu không tỉ lệ sẽ bị sai.
+      ⚠️ Vùng càng rộng + tỉ lệ càng chi tiết → ảnh càng lớn, có thể chậm hoặc lỗi.
+      Nếu ảnh xuất bị thiếu nền, đổi sang "⬜ Bản đồ đơn giản" rồi thử lại.
     </div>
     <div class="modal-actions">
-      <button type="button" id="truescale-modal-cancel" class="field-btn field-btn-secondary">Hủy</button>
-      <button type="button" id="truescale-modal-go" class="field-btn">🖨️ In theo tỉ lệ đã chọn</button>
+      <button type="button" id="bigexport-modal-cancel" class="field-btn field-btn-secondary">Hủy</button>
+      <button type="button" id="bigexport-modal-go" class="field-btn">🖼️ Xuất ảnh</button>
     </div>
   </div>
 </div>
 
 <script>
 (function(){
-  // Cần các biến/hàm toàn cục đã có sẵn trong file bản đồ chính: map, và các
-  // hàm hỗ trợ in đã tồn tại sẵn (ensurePrintHeader, waitForTilesLoaded).
-  // Nếu file gốc của bạn không có sẵn các hàm này (đã bị sửa/xóa), khối này
-  // vẫn tự chạy được nhờ các phương án dự phòng bên dưới.
+  // ---- Thêm nút kích hoạt vào sidebar, ngay sau nút "In đúng tỉ lệ" nếu có ----
+  const anchorBtn = document.getElementById('btn-truescale-print') || document.getElementById('btn-print-map');
+  const btnBigExport = document.createElement('button');
+  btnBigExport.id = 'btn-bigexport';
+  btnBigExport.className = 'field-btn field-btn-secondary';
+  btnBigExport.style.marginTop = '6px';
+  btnBigExport.textContent = '🖼️ Xuất ảnh toàn khu vực (giữ tỉ lệ)';
+  const btnBigExportNote = document.createElement('div');
+  btnBigExportNote.className = 'legend-note';
+  btnBigExportNote.textContent = 'Xuất khung nhìn hiện tại thành 1 file ảnh duy nhất, giữ nguyên tỉ lệ.';
 
-  function hasFn(name){ return typeof window[name] === 'function'; }
-
-  // Thêm nút kích hoạt vào sidebar, ngay sau nút in "thông thường" nếu có,
-  // nếu không tìm thấy thì thêm vào cuối mục "In / Xuất bản đồ".
-  const sectionTitles = Array.prototype.slice.call(document.querySelectorAll('.section-title'));
-  const printSectionTitle = sectionTitles.find(function(el){ return el.textContent.indexOf('In / Xuất bản đồ') !== -1; });
-  const existingPrintBtn = document.getElementById('btn-print-map');
-
-  const btnTrueScale = document.createElement('button');
-  btnTrueScale.id = 'btn-truescale-print';
-  btnTrueScale.className = 'field-btn field-btn-secondary';
-  btnTrueScale.style.marginTop = '6px';
-  btnTrueScale.textContent = '📐 In đúng tỉ lệ (1:100, 1:500, 1:1000...)';
-
-  const btnTrueScaleNote = document.createElement('div');
-  btnTrueScaleNote.className = 'legend-note';
-  btnTrueScaleNote.textContent = 'In giấy đúng tỉ lệ bản vẽ để mang đi đo đạc thực địa (VD 1:100, 1:500).';
-
-  if(existingPrintBtn && existingPrintBtn.parentNode){
-    existingPrintBtn.insertAdjacentElement('afterend', btnTrueScale);
-    btnTrueScale.insertAdjacentElement('afterend', btnTrueScaleNote);
-  } else if(printSectionTitle && printSectionTitle.parentNode){
-    printSectionTitle.insertAdjacentElement('afterend', btnTrueScaleNote);
-    printSectionTitle.insertAdjacentElement('afterend', btnTrueScale);
+  if(anchorBtn && anchorBtn.parentNode){
+    anchorBtn.insertAdjacentElement('afterend', btnBigExportNote);
+    anchorBtn.insertAdjacentElement('afterend', btnBigExport);
   } else {
-    // dự phòng: chèn vào đầu sidebar nếu không tìm thấy vị trí phù hợp
     const sidebar = document.getElementById('sidebar');
-    if(sidebar){ sidebar.insertBefore(btnTrueScaleNote, sidebar.firstChild); sidebar.insertBefore(btnTrueScale, btnTrueScaleNote); }
+    if(sidebar){ sidebar.appendChild(btnBigExport); sidebar.appendChild(btnBigExportNote); }
   }
 
-  const overlay = document.getElementById('truescale-modal-overlay');
-  const fieldScale = document.getElementById('truescale-field-scale');
-  const fieldPaper = document.getElementById('truescale-field-paper');
-  const fieldOrientation = document.getElementById('truescale-field-orientation');
-  const summaryEl = document.getElementById('truescale-scale-summary');
+  const overlay = document.getElementById('bigexport-modal-overlay');
+  const fieldScale = document.getElementById('bigexport-field-scale');
+  const summaryEl = document.getElementById('bigexport-scale-summary');
 
-  const PAPER_MM = { a4: [210, 297], a3: [297, 420] };
-  const MARGIN_MM = 8; // khớp với @page margin dùng ở khối in sẵn có trong file gốc
-  const PX_PER_MM = 96 / 25.4; // quy đổi chuẩn CSS: 1 inch = 96px = 25.4mm
-
-  function getPageSizeMM(){
-    let [w, h] = PAPER_MM[fieldPaper.value] || PAPER_MM.a4;
-    if(fieldOrientation.value === 'landscape'){ const t = w; w = h; h = t; }
-    return { w: w, h: h, usableW: w - MARGIN_MM * 2, usableH: h - MARGIN_MM * 2 };
+  function mppFromScale(scaleDen){
+    // Tương ứng chuẩn 96dpi: scaleDen mm giấy -> scaleDen * (25.4/96000) mét thực địa / pixel
+    return scaleDen * 25.4 / 96000;
   }
 
   function updateSummary(){
     const scaleDen = parseInt(fieldScale.value, 10);
-    const page = getPageSizeMM();
-    const realWidthM = (page.usableW * scaleDen / 1000);
-    const realHeightM = (page.usableH * scaleDen / 1000);
-    const cmToM = (scaleDen / 100).toFixed(2);
-    summaryEl.innerHTML =
-      '1cm trên giấy = <b>' + cmToM + 'm</b> ngoài thực địa.<br>' +
-      'Vùng in phủ khoảng <b>' + realWidthM.toFixed(1) + ' x ' + realHeightM.toFixed(1) + 'm</b> ngoài thực địa.';
-  }
-  [fieldScale, fieldPaper, fieldOrientation].forEach(function(el){ el.addEventListener('change', updateSummary); });
-  updateSummary();
-
-  function open(){ overlay.classList.add('open'); updateSummary(); }
-  function close(){ overlay.classList.remove('open'); }
-
-  btnTrueScale.addEventListener('click', open);
-  document.getElementById('truescale-modal-close').addEventListener('click', close);
-  document.getElementById('truescale-modal-cancel').addEventListener('click', close);
-  overlay.addEventListener('click', function(e){ if(e.target === overlay) close(); });
-
-  function setTrueScalePageCSS(wMM, hMM){
-    let styleEl = document.getElementById('truescale-page-style');
-    if(!styleEl){
-      styleEl = document.createElement('style');
-      styleEl.id = 'truescale-page-style';
-      document.head.appendChild(styleEl);
+    const bounds = map.getBounds();
+    const nw = bounds.getNorthWest(), ne = bounds.getNorthEast(), sw = bounds.getSouthWest();
+    const widthM = nw.distanceTo(ne);
+    const heightM = nw.distanceTo(sw);
+    const mpp = mppFromScale(scaleDen);
+    const pxW = Math.round(widthM / mpp);
+    const pxH = Math.round(heightM / mpp);
+    let html = 'Khung nhìn hiện tại phủ khoảng <b>' + widthM.toFixed(0) + ' x ' + heightM.toFixed(0) + 'm</b> thực địa.<br>' +
+      'Ảnh xuất ra sẽ có kích thước khoảng <b>' + pxW.toLocaleString('vi-VN') + ' x ' + pxH.toLocaleString('vi-VN') + ' điểm ảnh</b>.';
+    if(pxW * pxH > 40000000 || pxW > 8000 || pxH > 8000){
+      html += '<br><span style="color:#b3541e;font-weight:600;">⚠️ Ảnh rất lớn — nên zoom hẹp lại hoặc chọn tỉ lệ thưa hơn (1:500, 1:1000...).</span>';
     }
-    styleEl.textContent = '@page { size: ' + wMM + 'mm ' + hMM + 'mm; margin: ' + MARGIN_MM + 'mm; }';
+    summaryEl.innerHTML = html;
+  }
+  fieldScale.addEventListener('change', updateSummary);
+
+  function openModal(){ overlay.classList.add('open'); updateSummary(); }
+  function closeModal(){ overlay.classList.remove('open'); }
+  btnBigExport.addEventListener('click', openModal);
+  document.getElementById('bigexport-modal-close').addEventListener('click', closeModal);
+  document.getElementById('bigexport-modal-cancel').addEventListener('click', closeModal);
+  overlay.addEventListener('click', function(e){ if(e.target === overlay) closeModal(); });
+
+  function ensureHtml2Canvas(cb){
+    if(window.html2canvas){ cb(); return; }
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+    s.onload = cb;
+    s.onerror = function(){ alert('Không tải được thư viện xuất ảnh — kiểm tra kết nối mạng rồi thử lại.'); };
+    document.head.appendChild(s);
   }
 
-  function ensureHeaderFallback(){
-    if(hasFn('ensurePrintHeader')) return window.ensurePrintHeader();
-    let header = document.getElementById('print-header');
-    if(!header){
-      header = document.createElement('div');
-      header.id = 'print-header';
-      const mapEl = document.getElementById('map');
-      if(mapEl) mapEl.appendChild(header);
+  function showPrep(msg){
+    let el = document.getElementById('bigexport-prep-overlay');
+    if(!el){
+      el = document.createElement('div');
+      el.id = 'bigexport-prep-overlay';
+      el.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(28,35,33,0.6);display:flex;align-items:center;justify-content:center;color:#fff;font-size:14.5px;text-align:center;padding:24px;';
+      document.body.appendChild(el);
     }
-    return header;
+    el.textContent = msg;
+    el.style.display = 'flex';
+  }
+  function hidePrep(){
+    const el = document.getElementById('bigexport-prep-overlay');
+    if(el) el.style.display = 'none';
   }
 
-  function waitTilesFallback(maxWaitMs, cb){
-    if(hasFn('waitForTilesLoaded')){ window.waitForTilesLoaded(maxWaitMs, cb); return; }
-    setTimeout(cb, maxWaitMs);
-  }
-
-  document.getElementById('truescale-modal-go').addEventListener('click', function(){
-    if(typeof map === 'undefined'){
-      alert('Không tìm thấy biến bản đồ (map) — hãy chắc chắn khối này được dán SAU đoạn script chính tạo bản đồ, ngay trước </body>.');
-      return;
-    }
-
+  document.getElementById('bigexport-modal-go').addEventListener('click', function(){
     const scaleDen = parseInt(fieldScale.value, 10);
-    const page = getPageSizeMM();
+    closeModal();
+    ensureHtml2Canvas(function(){ runBigExport(scaleDen); });
+  });
 
-    const realWidthM = page.usableW * scaleDen / 1000;
-    const realHeightM = page.usableH * scaleDen / 1000;
-    const wPx = page.usableW * PX_PER_MM;
-    const targetMpp = realWidthM / wPx; // mét/pixel cần có để đúng tỉ lệ
-
+  function runBigExport(scaleDen){
+    const mapEl = document.getElementById('map');
+    const bounds = map.getBounds();
     const center = map.getCenter();
-    const rawZoom = Math.log2(156543.03392804097 * Math.cos(center.lat * Math.PI / 180) / targetMpp);
+    const nw = bounds.getNorthWest(), ne = bounds.getNorthEast(), sw = bounds.getSouthWest();
+    const widthM = nw.distanceTo(ne);
+    const heightM = nw.distanceTo(sw);
+    const mpp = mppFromScale(scaleDen);
+    const pxW = Math.max(1, Math.round(widthM / mpp));
+    const pxH = Math.max(1, Math.round(heightM / mpp));
+
+    const MAX_DIM = 8000;
+    if(pxW > MAX_DIM || pxH > MAX_DIM){
+      if(!confirm('Ảnh cần xuất có kích thước ' + pxW + ' x ' + pxH + ' điểm ảnh — vượt mức khuyến nghị (' + MAX_DIM + 'px mỗi cạnh), có thể làm trình duyệt chậm hoặc lỗi.\n\nVẫn tiếp tục?')){
+        return;
+      }
+    }
+
     const maxZ = (map.options && map.options.maxZoom) ? map.options.maxZoom : 19;
+    const rawZoom = Math.log2(156543.03392804097 * Math.cos(center.lat * Math.PI / 180) / mpp);
     const zoom = Math.max(1, Math.min(maxZ, rawZoom));
 
-    const mapEl = document.getElementById('map');
     const savedWidth = mapEl.style.width;
     const savedHeight = mapEl.style.height;
     const savedZoomSnap = map.options.zoomSnap;
@@ -3038,31 +2964,17 @@ document.getElementById('btn-admin-wipe-leads').addEventListener('click', async 
     const savedCenter = center;
     const savedZoom = map.getZoom();
 
-    // cho phép zoom lẻ để bám sát đúng tỉ lệ đã tính, không làm tròn số nguyên
+    showPrep('Đang dựng ảnh (' + pxW + ' x ' + pxH + 'px) — vui lòng đợi, vùng lớn có thể mất khá lâu...');
+
+    document.body.classList.add('printing'); // tự ẩn sidebar/nút điều khiển (dùng lại CSS in sẵn có)
     map.options.zoomSnap = 0;
     map.options.zoomDelta = 0.25;
+    mapEl.style.width = pxW + 'px';
+    mapEl.style.height = pxH + 'px';
     map.setView(center, zoom, { animate: false });
-
-    setTrueScalePageCSS(page.w, page.h);
-
-    const header = ensureHeaderFallback();
-    const cmToM = (scaleDen / 100).toFixed(2);
-    header.innerHTML =
-      '<h2>Bản đồ GHTN-HCM — Tỉ lệ 1:' + scaleDen + '</h2>' +
-      '<div class="print-sub">In ở kích thước thật (100%) — KHÔNG chọn "Vừa khít trang". ' +
-      '1cm trên giấy = ' + cmToM + 'm thực tế. Vùng in phủ khoảng ' +
-      realWidthM.toFixed(1) + ' x ' + realHeightM.toFixed(1) + 'm ngoài thực địa.' +
-      (scaleDen <= 200 ? ' Lưu ý: ở tỉ lệ lớn như 1:' + scaleDen + ', ảnh nền bản đồ có thể bị mờ do vượt quá độ phân giải tối đa của dữ liệu bản đồ web — đường ranh giới/ghi chú vẫn hiển thị rõ.' : '') +
-      '</div>';
-
-    // Đặt khung bản đồ đúng bằng số milimet sẽ chiếm trên giấy — đây là bước
-    // mấu chốt để tỉ lệ in ra khớp với thực tế (không phóng to/thu nhỏ khi in).
-    document.body.classList.add('printing');
-    mapEl.style.width = page.usableW + 'mm';
-    mapEl.style.height = page.usableH + 'mm';
     map.invalidateSize();
 
-    function restoreEverything(){
+    function restore(){
       document.body.classList.remove('printing');
       mapEl.style.width = savedWidth;
       mapEl.style.height = savedHeight;
@@ -3070,13 +2982,44 @@ document.getElementById('btn-admin-wipe-leads').addEventListener('click', async 
       map.options.zoomDelta = savedZoomDelta;
       map.setView(savedCenter, savedZoom, { animate: false });
       map.invalidateSize();
-      window.removeEventListener('afterprint', restoreEverything);
+      hidePrep();
     }
-    window.addEventListener('afterprint', restoreEverything);
 
-    close();
-    waitTilesFallback(2500, function(){ window.print(); });
-  });
+    function doCapture(){
+      html2canvas(mapEl, {
+        useCORS: true,
+        allowTaint: false,
+        backgroundColor: '#f7f5ef',
+        width: pxW,
+        height: pxH,
+        windowWidth: pxW,
+        windowHeight: pxH,
+        scale: 1
+      }).then(function(canvas){
+        canvas.toBlob(function(blob){
+          if(!blob){
+            alert('Không tạo được file ảnh (có thể do nền bản đồ chặn CORS). Hãy thử đổi sang "⬜ Bản đồ đơn giản" rồi xuất lại.');
+            restore();
+            return;
+          }
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'ban-do-1-' + scaleDen + '-' + new Date().toISOString().slice(0, 10) + '.png';
+          a.click();
+          URL.revokeObjectURL(url);
+          restore();
+        }, 'image/png');
+      }).catch(function(err){
+        alert('Xuất ảnh thất bại: ' + (err && err.message ? err.message : err) + '\nGợi ý: thử đổi nền bản đồ sang "⬜ Bản đồ đơn giản" rồi thử lại.');
+        restore();
+      });
+    }
+
+    // đợi tile ở khung nhìn/độ phóng mới tải xong trước khi chụp
+    const waitMs = 1600 + Math.min(6000, Math.round((pxW * pxH) / 300000));
+    setTimeout(doCapture, waitMs);
+  }
 })();
 </script>
-<!-- KẾT THÚC KHỐI: In bản đồ đúng tỉ lệ -->
+<!-- KẾT THÚC KHỐI: Xuất ảnh toàn khu vực giữ đúng tỉ lệ -->
