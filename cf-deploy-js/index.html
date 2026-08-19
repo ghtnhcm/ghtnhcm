@@ -2507,23 +2507,30 @@ document.getElementById('btn-admin-wipe-leads').addEventListener('click', async 
       let shown = 0, skippedNoCoord = 0, skippedFiltered = 0;
 
       for (const row of rows) {
-        const result = String(cellText(row, COL.result)).trim();
-        if (result === EXCLUDE_RESULT) { skippedFiltered++; continue; }
+ const result = String(cellText(row, COL.result)).trim();
+if (result === EXCLUDE_RESULT) { skippedFiltered++; continue; }
 
-        const lat = cellNumber(row, COL.lat);
-        const lng = cellNumber(row, COL.lng);
-        if (!isFinite(lat) || !isFinite(lng) || (lat === 0 && lng === 0)) { skippedNoCoord++; continue; }
+const checkColValue = String(cellText(row, COL.checkCol)).trim();
+if (!checkColValue) { skippedFiltered++; continue; }
 
-        const name = String(cellText(row, COL.name) || '').trim();
-        const phone = String(cellText(row, COL.phone) || '').trim();
-        const address = String(cellText(row, COL.address) || '').trim();
-        const reason = String(cellText(row, COL.reason) || '').trim();
-        const birthYear = String(cellText(row, COL.birthYear) || '').trim();
+  const checkColValue = String(cellText(row, COL.checkCol)).trim();
+  if (!checkColValue) { skippedFiltered++; continue; }
 
-        const marker = L.marker([lat, lng], { icon: candidateIcon() });
-        marker.bindPopup(buildPopupEl(name, phone, address, reason, birthYear));
-        candidateLayer.addLayer(marker);
-        shown++;
+  const lat = cellNumber(row, COL.lat);
+  const lng = cellNumber(row, COL.lng);
+  if (!isFinite(lat) || !isFinite(lng) || (lat === 0 && lng === 0)) { skippedNoCoord++; continue; }
+
+  const name = String(cellText(row, COL.name) || '').trim();
+  const phone = String(cellText(row, COL.phone) || '').trim();
+  const address = String(cellText(row, COL.address) || '').trim();
+  const reason = String(cellText(row, COL.reason) || '').trim();
+  const birthYear = String(cellText(row, COL.birthYear) || '').trim();
+
+  const marker = L.marker([lat, lng], { icon: candidateIcon() });
+  marker.bindPopup(buildPopupEl(name, phone, address, reason, birthYear));
+  candidateLayer.addLayer(marker);
+  shown++;
+}
       }
 
       const cntEl = document.getElementById('cnt-sheet_candidates');
