@@ -531,6 +531,34 @@ const map = L.map('map', {zoomControl:true, preferCanvas:true}).setView([10.98, 
 })();
 
 // ---------- Các loại nền bản đồ (base layers) ----------
+
+// 0) VietMap — bản đồ nền của VietMap (thay cho OpenStreetMap theo yêu cầu).
+// Cần API key MIỄN PHÍ của riêng bạn: đăng ký tại https://maps.vietmap.vn (mục "Manage API key"),
+// rồi dán key vào biến VIETMAP_API_KEY bên dưới. Nếu vẫn để giá trị placeholder,
+// ứng dụng sẽ tự động dùng lại OpenStreetMap để tránh hiển thị bản đồ trống/lỗi.
+const VIETMAP_API_KEY = '547d3d0e8b9b26627017b3ef97d6e7c869713f26d8b33b45';
+const VIETMAP_KEY_IS_PLACEHOLDER = !VIETMAP_API_KEY || VIETMAP_API_KEY === 'YOUR_VIETMAP_API_KEY_HERE';
+
+const layerVietMap = L.tileLayer('https://maps.vietmap.vn/tm/{z}/{x}/{y}.png?apikey=' + VIETMAP_API_KEY, {
+  maxZoom: 19,
+  attribution: '&copy; <a href="https://maps.vietmap.vn/copyright" target="_blank">Vietmap</a>',
+  crossOrigin: true
+});
+// Nếu chưa có key thật, tự động rơi về OpenStreetMap khi tile VietMap lỗi (401/403...),
+// tránh làm người dùng thấy bản đồ trắng xoá mà không hiểu vì sao.
+if(VIETMAP_KEY_IS_PLACEHOLDER){
+  let vietmapFallbackDone = false;
+  layerVietMap.on('tileerror', function(){
+    if(vietmapFallbackDone) return;
+    vietmapFallbackDone = true;
+    console.warn('[VietMap] Chưa cấu hình API key thật (VIETMAP_API_KEY) — tự động chuyển sang OpenStreetMap. Lấy key miễn phí tại https://maps.vietmap.vn');
+    if(map.hasLayer(layerVietMap)){
+      map.removeLayer(layerVietMap);
+      layerStreetDetailed.addTo(map);
+    }
+  });
+}
+
 // 1) Đường phố chi tiết (OpenStreetMap chuẩn) — hiển thị số nhà khi zoom sâu (~z18-19) ở khu vực đã có dữ liệu
 const layerStreetDetailed = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   maxZoom: 19,
@@ -568,11 +596,15 @@ const layerSimple = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}
 });
 
 const baseMaps = {
-  "🗺️ Đường phố chi tiết (có số nhà)": layerStreetDetailed,
+  "🗺️ VietMap": layerVietMap,
+  "🗺️ Đường phố chi tiết (OSM, có số nhà)": layerStreetDetailed,
   "🛰️ Vệ tinh": layerSatellite,
   "🛰️ Vệ tinh + tên đường": layerSatelliteLabels,
   "⬜ Bản đồ đơn giản": layerSimple
 };
+// VietMap là nền mặc định khi mở ứng dụng; nếu key placeholder thì tileerror ở trên
+// sẽ tự chuyển sang OSM.
+layerVietMap.addTo(map);
 L.control.layers(baseMaps, null, {position:'topright', collapsed:true}).addTo(map);
 // Thước tỉ lệ — hữu ích khi xem trên bản đồ và bắt buộc khi in ra giấy để đo khoảng cách thực tế
 L.control.scale({metric:true, imperial:false, position:'bottomleft'}).addTo(map);
@@ -1245,7 +1277,8 @@ function buildActivePrintLegend(){
 // Bản đồ nền hiện đang bật (để biết cần chờ tải xong ô nào trước khi in)
 function getActiveTileLayerForLoadEvent(){
   let candidate = null;
-  if(map.hasLayer(layerStreetDetailed)) candidate = layerStreetDetailed;
+  if(map.hasLayer(layerVietMap)) candidate = layerVietMap;
+  else if(map.hasLayer(layerStreetDetailed)) candidate = layerStreetDetailed;
   else if(map.hasLayer(layerSatellite)) candidate = layerSatellite;
   else if(map.hasLayer(layerSatelliteLabels)) candidate = layerSatelliteLabels;
   else if(map.hasLayer(layerSimple)) candidate = layerSimple;
@@ -3240,8 +3273,8 @@ document.getElementById('btn-admin-wipe-leads').addEventListener('click', async 
     const zoom = Math.max(1, Math.min(maxZ, rawZoom));
 
     // Ghi nhớ nền bản đồ đang dùng để trả lại sau khi xuất xong
-    const baseLayerCandidates = [layerStreetDetailed, layerSatellite, layerSatelliteLabels, layerSimple];
-    const originalBaseLayer = baseLayerCandidates.find(function(l){ return map.hasLayer(l); }) || layerStreetDetailed;
+    const baseLayerCandidates = [layerVietMap, layerStreetDetailed, layerSatellite, layerSatelliteLabels, layerSimple];
+    const originalBaseLayer = baseLayerCandidates.find(function(l){ return map.hasLayer(l); }) || layerVietMap;
     const usingSimpleAlready = originalBaseLayer === layerSimple;
 
     const savedWidth = mapEl.style.width;
