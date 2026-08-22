@@ -2801,28 +2801,35 @@ document.getElementById('btn-admin-wipe-leads').addEventListener('click', async 
      KẾT THÚC KHỐI: Tra cứu / tìm kiếm địa chỉ
      ===================================================================== -->
 <!-- ============================================================
-     KHỐI: Xuất bản đồ theo LƯỚI nhiều ảnh nhỏ (để ghép lại)
-     - Chia vùng đang xem thành các ô nhỏ, mỗi ô xuất 1 file PNG.
-     - Tên file: <ten>_r{hang}_c{cot}.png (hàng 1 = trên cùng,
-       cột 1 = bên trái) — ghép theo lưới đó ra đúng bản đồ gốc.
+     KHỐI: Xuất bản đồ theo LƯỚI + TỰ ĐỘNG GHÉP thành 1 ảnh
+     - Chia vùng đang xem thành nhiều ô nhỏ để chụp (nhẹ, không treo),
+       sau đó GHÉP các ô lại thành 1 file ảnh PNG DUY NHẤT trong bộ nhớ
+       trình duyệt — bạn không cần tự ghép thủ công.
+     - GIỚI HẠN KỸ THUẬT: trình duyệt chỉ cho phép canvas tối đa khoảng
+       16.384 x 16.384px và ~200 triệu điểm ảnh. Nếu vùng bạn chọn vượt
+       mức này, script sẽ báo và đề nghị zoom hẹp lại / chọn tỉ lệ thưa
+       hơn, KHÔNG cố ghép ảnh vượt giới hạn (sẽ lỗi/hỏng ảnh).
      - Cần thư viện html2canvas (tự tải qua CDN khi dùng lần đầu).
      - Dán khối này SAU khối "Xuất ảnh toàn khu vực", trước </body>.
+     - Có thể dùng SONG SONG với khối "Xuất theo lưới" cũ (2 nút khác
+       nhau) hoặc thay thế nó — tùy bạn.
      - MUỐN GỠ: xóa từ "BẮT ĐẦU KHỐI" đến "KẾT THÚC KHỐI" bên dưới.
      ============================================================ -->
-<!-- BẮT ĐẦU KHỐI: Xuất theo lưới nhiều ảnh -->
-<div id="gridexport-modal-overlay" class="modal-overlay">
-  <div class="modal-box" id="gridexport-modal-box">
-    <button type="button" class="modal-close-x" id="gridexport-modal-close">✕</button>
-    <h2>🧩 Xuất theo lưới (nhiều ảnh để ghép)</h2>
+<!-- BẮT ĐẦU KHỐI: Xuất lưới + tự ghép 1 ảnh -->
+<div id="mergeexport-modal-overlay" class="modal-overlay">
+  <div class="modal-box" id="mergeexport-modal-box">
+    <button type="button" class="modal-close-x" id="mergeexport-modal-close">✕</button>
+    <h2>🧩🖼️ Xuất lưới & tự ghép thành 1 ảnh</h2>
     <div class="legend-note">
-      Chia khung nhìn hiện tại thành nhiều ô nhỏ, mỗi ô xuất 1 file ảnh PNG
-      riêng, giữ đúng tỉ lệ đã chọn. Ghép các ảnh lại theo tên file
-      (r=hàng, c=cột) để ra bản đồ đầy đủ.
+      Chụp vùng đang xem theo nhiều ô nhỏ (để không treo trình duyệt),
+      rồi tự động ghép lại thành MỘT file ảnh PNG duy nhất — không cần
+      bạn ghép thủ công. Chỉ khả thi nếu ảnh tổng đủ nhỏ (xem giới hạn
+      bên dưới).
     </div>
     <div class="modal-field">
-      <label for="gridexport-field-scale">Tỉ lệ bản đồ</label>
-      <select id="gridexport-field-scale">
-        <option value="100">1 : 100 (rất chi tiết — số ô sẽ RẤT nhiều)</option>
+      <label for="mergeexport-field-scale">Tỉ lệ bản đồ</label>
+      <select id="mergeexport-field-scale">
+        <option value="100">1 : 100 (rất chi tiết — chỉ hợp vùng rất nhỏ)</option>
         <option value="200">1 : 200</option>
         <option value="500" selected>1 : 500</option>
         <option value="1000">1 : 1000 (khuyến nghị cho vùng rộng)</option>
@@ -2830,54 +2837,57 @@ document.getElementById('btn-admin-wipe-leads').addEventListener('click', async 
       </select>
     </div>
     <div class="modal-field">
-      <label for="gridexport-field-tilepx">Kích thước mỗi ô (điểm ảnh)</label>
-      <select id="gridexport-field-tilepx">
+      <label for="mergeexport-field-tilepx">Kích thước mỗi ô chụp (điểm ảnh)</label>
+      <select id="mergeexport-field-tilepx">
         <option value="1500">1500 x 1500px (an toàn nhất, chậm hơn)</option>
         <option value="2000" selected>2000 x 2000px (khuyến nghị)</option>
         <option value="2500">2500 x 2500px (nhanh hơn, cần máy khỏe)</option>
       </select>
     </div>
-    <div id="gridexport-scale-summary" class="legend-note" style="background:#faf8f2;border:1px solid var(--line);border-radius:8px;padding:8px 10px;"></div>
-    <div class="legend-note" style="color:#b3541e;font-weight:600;">
-      ⚠️ Trình duyệt sẽ hỏi xin phép "tải nhiều file" ngay khi file thứ 2
-      chuẩn bị tải — hãy bấm <u>Cho phép / Allow</u> thì các ô còn lại mới
-      tự tải tiếp, nếu không quá trình sẽ dừng giữa chừng.
+    <div id="mergeexport-scale-summary" class="legend-note" style="background:#faf8f2;border:1px solid var(--line);border-radius:8px;padding:8px 10px;"></div>
+    <div class="legend-note">
+      Giới hạn kỹ thuật của trình duyệt: ảnh ghép cuối cùng phải ≤
+      <b>16.000 x 16.000px</b> và ≤ <b>200 triệu điểm ảnh</b>. Vượt mức
+      này sẽ không ghép được — hãy zoom hẹp vùng lại hoặc chọn tỉ lệ
+      thưa hơn.
     </div>
     <div class="modal-actions">
-      <button type="button" id="gridexport-modal-cancel" class="field-btn field-btn-secondary">Hủy</button>
-      <button type="button" id="gridexport-modal-go" class="field-btn">🧩 Bắt đầu xuất lưới</button>
+      <button type="button" id="mergeexport-modal-cancel" class="field-btn field-btn-secondary">Hủy</button>
+      <button type="button" id="mergeexport-modal-go" class="field-btn">🧩🖼️ Xuất & ghép thành 1 ảnh</button>
     </div>
   </div>
 </div>
 
 <script>
 (function(){
-  // ---- Thêm nút kích hoạt vào sidebar, ngay sau nút "Xuất ảnh toàn khu vực" nếu có ----
-  const anchorBtn = document.getElementById('btn-bigexport');
-  const btnGridExport = document.createElement('button');
-  btnGridExport.id = 'btn-gridexport';
-  btnGridExport.className = 'field-btn field-btn-secondary';
-  btnGridExport.style.marginTop = '6px';
-  btnGridExport.textContent = '🧩 Xuất theo lưới (nhiều ảnh để ghép)';
-  const btnGridExportNote = document.createElement('div');
-  btnGridExportNote.className = 'legend-note';
-  btnGridExportNote.textContent = 'Chia vùng rộng thành nhiều ảnh nhỏ, ghép lại thủ công sau.';
+  const anchorBtn = document.getElementById('btn-gridexport') || document.getElementById('btn-bigexport');
+  const btnMergeExport = document.createElement('button');
+  btnMergeExport.id = 'btn-mergeexport';
+  btnMergeExport.className = 'field-btn field-btn-secondary';
+  btnMergeExport.style.marginTop = '6px';
+  btnMergeExport.textContent = '🧩🖼️ Xuất lưới & tự ghép 1 ảnh';
+  const btnMergeExportNote = document.createElement('div');
+  btnMergeExportNote.className = 'legend-note';
+  btnMergeExportNote.textContent = 'Chụp theo ô nhỏ rồi tự ghép thành 1 file PNG duy nhất (nếu đủ nhỏ).';
 
   if(anchorBtn && anchorBtn.parentNode){
-    anchorBtn.insertAdjacentElement('afterend', btnGridExportNote);
-    anchorBtn.insertAdjacentElement('afterend', btnGridExport);
+    anchorBtn.insertAdjacentElement('afterend', btnMergeExportNote);
+    anchorBtn.insertAdjacentElement('afterend', btnMergeExport);
   } else {
     const sidebar = document.getElementById('sidebar');
-    if(sidebar){ sidebar.appendChild(btnGridExport); sidebar.appendChild(btnGridExportNote); }
+    if(sidebar){ sidebar.appendChild(btnMergeExport); sidebar.appendChild(btnMergeExportNote); }
   }
 
-  const overlay = document.getElementById('gridexport-modal-overlay');
-  const fieldScale = document.getElementById('gridexport-field-scale');
-  const fieldTilePx = document.getElementById('gridexport-field-tilepx');
-  const summaryEl = document.getElementById('gridexport-scale-summary');
+  const overlay = document.getElementById('mergeexport-modal-overlay');
+  const fieldScale = document.getElementById('mergeexport-field-scale');
+  const fieldTilePx = document.getElementById('mergeexport-field-tilepx');
+  const summaryEl = document.getElementById('mergeexport-scale-summary');
+
+  const MAX_CANVAS_DIM = 16000;
+  const MAX_CANVAS_PIXELS = 200000000;
 
   function mppFromScale(scaleDen){
-    return scaleDen * 25.4 / 96000; // met/pixel chuẩn 96dpi
+    return scaleDen * 25.4 / 96000;
   }
 
   function computeGridPlan(){
@@ -2898,22 +2908,26 @@ document.getElementById('btn-admin-wipe-leads').addEventListener('click', async 
   function updateSummary(){
     const p = computeGridPlan();
     const totalTiles = p.rows * p.cols;
+    const withinLimit = p.pxW <= MAX_CANVAS_DIM && p.pxH <= MAX_CANVAS_DIM && (p.pxW * p.pxH) <= MAX_CANVAS_PIXELS;
     let html = 'Khung nhìn hiện tại phủ khoảng <b>' + p.widthM.toFixed(0) + ' x ' + p.heightM.toFixed(0) + 'm</b> thực địa.<br>' +
-      'Ảnh tổng cần khoảng <b>' + p.pxW.toLocaleString('vi-VN') + ' x ' + p.pxH.toLocaleString('vi-VN') + 'px</b> → chia thành lưới ' +
-      '<b>' + p.rows + ' hàng x ' + p.cols + ' cột = ' + totalTiles + ' ảnh</b>.';
-    if(totalTiles > 60){
-      html += '<br><span style="color:#b3541e;font-weight:600;">⚠️ Số ô khá nhiều (' + totalTiles + ') — nên zoom hẹp vùng lại hoặc chọn tỉ lệ thưa hơn để giảm số ảnh, tránh mất quá nhiều thời gian.</span>';
+      'Ảnh ghép cuối cùng sẽ có kích thước <b>' + p.pxW.toLocaleString('vi-VN') + ' x ' + p.pxH.toLocaleString('vi-VN') + 'px</b> ' +
+      '(chụp qua ' + p.rows + ' hàng x ' + p.cols + ' cột = ' + totalTiles + ' ô).';
+    if(withinLimit){
+      html += '<br><span style="color:#2f7a3d;font-weight:600;">✅ Nằm trong giới hạn — có thể ghép thành 1 ảnh duy nhất.</span>';
+    } else {
+      html += '<br><span style="color:#c0392b;font-weight:600;">❌ VƯỢT giới hạn ghép ảnh (tối đa ' + MAX_CANVAS_DIM.toLocaleString('vi-VN') + 'px mỗi cạnh). Hãy zoom hẹp vùng lại hoặc chọn tỉ lệ thưa hơn trước khi xuất.</span>';
     }
     summaryEl.innerHTML = html;
+    return withinLimit;
   }
   fieldScale.addEventListener('change', updateSummary);
   fieldTilePx.addEventListener('change', updateSummary);
 
   function openModal(){ overlay.classList.add('open'); updateSummary(); }
   function closeModal(){ overlay.classList.remove('open'); }
-  btnGridExport.addEventListener('click', openModal);
-  document.getElementById('gridexport-modal-close').addEventListener('click', closeModal);
-  document.getElementById('gridexport-modal-cancel').addEventListener('click', closeModal);
+  btnMergeExport.addEventListener('click', openModal);
+  document.getElementById('mergeexport-modal-close').addEventListener('click', closeModal);
+  document.getElementById('mergeexport-modal-cancel').addEventListener('click', closeModal);
   overlay.addEventListener('click', function(e){ if(e.target === overlay) closeModal(); });
 
   function ensureHtml2Canvas(cb){
@@ -2926,10 +2940,10 @@ document.getElementById('btn-admin-wipe-leads').addEventListener('click', async 
   }
 
   function showPrep(msg){
-    let el = document.getElementById('gridexport-prep-overlay');
+    let el = document.getElementById('mergeexport-prep-overlay');
     if(!el){
       el = document.createElement('div');
-      el.id = 'gridexport-prep-overlay';
+      el.id = 'mergeexport-prep-overlay';
       el.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(28,35,33,0.6);display:flex;align-items:center;justify-content:center;color:#fff;font-size:14.5px;text-align:center;padding:24px;';
       document.body.appendChild(el);
     }
@@ -2937,23 +2951,28 @@ document.getElementById('btn-admin-wipe-leads').addEventListener('click', async 
     el.style.display = 'flex';
   }
   function hidePrep(){
-    const el = document.getElementById('gridexport-prep-overlay');
+    const el = document.getElementById('mergeexport-prep-overlay');
     if(el) el.style.display = 'none';
   }
 
-  document.getElementById('gridexport-modal-go').addEventListener('click', function(){
+  document.getElementById('mergeexport-modal-go').addEventListener('click', function(){
+    const withinLimit = updateSummary();
+    if(!withinLimit){
+      alert('Vùng/tỉ lệ đang chọn vượt giới hạn ghép ảnh của trình duyệt.\n\nHãy zoom hẹp vùng xem lại, hoặc chọn tỉ lệ thưa hơn (1:1000, 1:2000...), rồi thử lại.');
+      return;
+    }
     const p = computeGridPlan();
     const totalTiles = p.rows * p.cols;
-    if(!confirm('Sẽ xuất ' + totalTiles + ' ảnh (lưới ' + p.rows + ' hàng x ' + p.cols + ' cột).\n\nQuá trình có thể mất vài phút và trình duyệt sẽ hỏi xin phép tải nhiều file — hãy bấm Cho phép/Allow khi được hỏi.\n\nBắt đầu?')){
+    if(!confirm('Sẽ chụp ' + totalTiles + ' ô (lưới ' + p.rows + ' hàng x ' + p.cols + ' cột) rồi tự ghép thành 1 ảnh ' + p.pxW + ' x ' + p.pxH + 'px.\n\nQuá trình có thể mất vài phút. Bắt đầu?')){
       return;
     }
     closeModal();
-    ensureHtml2Canvas(function(){ runGridExport(p); });
+    ensureHtml2Canvas(function(){ runMergedGridExport(p); });
   });
 
   function sleep(ms){ return new Promise(function(res){ setTimeout(res, ms); }); }
 
-  async function runGridExport(p){
+  async function runMergedGridExport(p){
     const mapEl = document.getElementById('map');
     const savedWidth = mapEl.style.width;
     const savedHeight = mapEl.style.height;
@@ -2962,14 +2981,21 @@ document.getElementById('btn-admin-wipe-leads').addEventListener('click', async 
     const savedCenter = map.getCenter();
     const savedZoom = map.getZoom();
 
-    // Zoom dùng chung cho toàn lưới (tính 1 lần từ tâm tổng thể, đủ chính xác cho vùng nhỏ/vừa)
     const overallCenter = savedCenter;
     const maxZ = (map.options && map.options.maxZoom) ? map.options.maxZoom : 19;
     const rawZoom = Math.log2(156543.03392804097 * Math.cos(overallCenter.lat * Math.PI / 180) / p.mpp);
     const zoom = Math.max(1, Math.min(maxZ, rawZoom));
 
-    const latSpan = p.nw.lat - p.sw.lat; // duong (nw o tren)
+    const latSpan = p.nw.lat - p.sw.lat;
     const lngSpan = p.ne.lng - p.nw.lng;
+
+    // Canvas dich (ghep toan bo)
+    const finalCanvas = document.createElement('canvas');
+    finalCanvas.width = p.pxW;
+    finalCanvas.height = p.pxH;
+    const finalCtx = finalCanvas.getContext('2d');
+    finalCtx.fillStyle = '#f7f5ef';
+    finalCtx.fillRect(0, 0, p.pxW, p.pxH);
 
     document.body.classList.add('printing');
     map.options.zoomSnap = 0;
@@ -2977,12 +3003,11 @@ document.getElementById('btn-admin-wipe-leads').addEventListener('click', async 
 
     let successCount = 0;
     const totalTiles = p.rows * p.cols;
-    const namePrefix = 'khu-vuc_ty-le-1-' + p.scaleDen;
 
     for(let r = 0; r < p.rows; r++){
       for(let c = 0; c < p.cols; c++){
         const idx = r * p.cols + c + 1;
-        showPrep('Đang xuất ô ' + idx + ' / ' + totalTiles + ' (hàng ' + (r+1) + ', cột ' + (c+1) + ')...');
+        showPrep('Đang chụp & ghép ô ' + idx + ' / ' + totalTiles + ' (hàng ' + (r+1) + ', cột ' + (c+1) + ')...');
 
         const x0 = c * p.tilePx, x1 = Math.min(p.pxW, (c+1) * p.tilePx);
         const y0 = r * p.tilePx, y1 = Math.min(p.pxH, (r+1) * p.tilePx);
@@ -3007,7 +3032,7 @@ document.getElementById('btn-admin-wipe-leads').addEventListener('click', async 
         await sleep(waitMs);
 
         try{
-          const canvas = await html2canvas(mapEl, {
+          const tileCanvas = await html2canvas(mapEl, {
             useCORS: true,
             allowTaint: false,
             backgroundColor: '#f7f5ef',
@@ -3017,25 +3042,12 @@ document.getElementById('btn-admin-wipe-leads').addEventListener('click', async 
             windowHeight: tileH,
             scale: 1
           });
-          await new Promise(function(resolve){
-            canvas.toBlob(function(blob){
-              if(blob){
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = namePrefix + '_r' + (r+1) + '_c' + (c+1) + '.png';
-                a.click();
-                URL.revokeObjectURL(url);
-                successCount++;
-              }
-              resolve();
-            }, 'image/png');
-          });
+          // Ghep truc tiep vao canvas tong, khong tai file rieng
+          finalCtx.drawImage(tileCanvas, x0, y0);
+          successCount++;
         } catch(err){
-          console.error('Loi xuat o r' + (r+1) + '_c' + (c+1) + ':', err);
+          console.error('Loi chup o r' + (r+1) + '_c' + (c+1) + ':', err);
         }
-
-        await sleep(500); // giãn cách giữa các lượt tải để trình duyệt không chặn
       }
     }
 
@@ -3046,13 +3058,26 @@ document.getElementById('btn-admin-wipe-leads').addEventListener('click', async 
     map.options.zoomDelta = savedZoomDelta;
     map.setView(savedCenter, savedZoom, { animate: false });
     map.invalidateSize();
-    hidePrep();
 
-    alert('Hoàn tất: đã xuất ' + successCount + ' / ' + totalTiles + ' ảnh.\n\nCác file có tên dạng "' + namePrefix + '_r{hàng}_c{cột}.png" — ghép theo lưới ' + p.rows + ' hàng x ' + p.cols + ' cột (hàng 1 trên cùng, cột 1 bên trái) để ra bản đồ đầy đủ.');
+    showPrep('Đang xuất file ảnh cuối cùng...');
+    finalCanvas.toBlob(function(blob){
+      hidePrep();
+      if(!blob){
+        alert('Ghép xong nhưng không xuất được file (ảnh có thể quá lớn để trình duyệt xử lý bước cuối). Thử lại với tỉ lệ thưa hơn hoặc vùng hẹp hơn.');
+        return;
+      }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'khu-vuc-ghep_ty-le-1-' + p.scaleDen + '_' + new Date().toISOString().slice(0,10) + '.png';
+      a.click();
+      URL.revokeObjectURL(url);
+      alert('Hoàn tất: đã ghép ' + successCount + ' / ' + totalTiles + ' ô thành 1 ảnh duy nhất và tải về máy.');
+    }, 'image/png');
   }
 })();
 </script>
-<!-- KẾT THÚC KHỐI: Xuất theo lưới nhiều ảnh -->
+<!-- KẾT THÚC KHỐI: Xuất lưới + tự ghép 1 ảnh -->
 </body>
 </html><!--
   ============================================================================
