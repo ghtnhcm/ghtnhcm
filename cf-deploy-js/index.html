@@ -2600,5 +2600,389 @@ document.getElementById('btn-admin-wipe-leads').addEventListener('click', async 
 <!-- =====================================================================
      KẾT THÚC KHỐI: Tra cứu / tìm kiếm địa chỉ
      ===================================================================== -->
+<!-- =====================================================================
+     KHỐI: Chỉ đường / khoảng cách di chuyển (như Google Maps)
+     - Dùng dịch vụ định tuyến miễn phí OSRM do FOSSGIS vận hành
+       (routing.openstreetmap.de) — dữ liệu OpenStreetMap, không cần API key.
+     - 3 phương tiện: Ô tô/xe máy, Xe đạp, Đi bộ.
+     - Gõ địa chỉ (có gợi ý qua Nominatim) HOẶC bấm 🎯 rồi chọn điểm trên
+       bản đồ HOẶC bấm 📍 để lấy vị trí hiện tại của bạn.
+     - Sau khi có tuyến đường, có thể kéo 2 điểm ghim để chỉnh lại — tuyến
+       đường tự tính lại, giống Google Maps.
+     - Khối tách riêng — muốn gỡ chỉ cần xóa từ "BẮT ĐẦU KHỐI" tới
+       "KẾT THÚC KHỐI" bên dưới.
+     ===================================================================== -->
+<style>
+  #route-toggle-btn{
+    position:fixed; top:12px; left:calc(50% + 28px);
+    z-index:900;
+    width:40px; height:40px; border-radius:50%;
+    background:var(--panel); border:1px solid var(--line);
+    box-shadow:0 2px 10px rgba(0,0,0,0.18);
+    font-size:17px; cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+  }
+  @media (max-width:760px){
+    #route-toggle-btn{ left:auto; right:10px; top:58px; }
+  }
+  #route-box-wrap{
+    position:fixed; top:12px; left:50%; transform:translateX(-50%);
+    z-index:900; width:min(360px, calc(100vw - 90px));
+    background:var(--panel); border:1px solid var(--line); border-radius:12px;
+    box-shadow:0 4px 16px rgba(0,0,0,0.2);
+    padding:10px 10px 8px;
+  }
+  #route-box-wrap.hidden{ display:none; }
+  @media (max-width:760px){
+    #route-box-wrap{ left:auto; right:10px; top:12px; transform:none; width:min(320px, calc(100vw - 20px)); }
+  }
+  .route-field-row{
+    display:flex; align-items:center; gap:6px;
+    background:#faf8f2; border:1px solid var(--line); border-radius:8px;
+    padding:6px 6px 6px 10px; margin-bottom:2px;
+  }
+  .route-field-dot{ width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+  .route-field-row input{
+    flex:1; min-width:0; border:none; outline:none; background:transparent;
+    font-size:13px; padding:4px 2px; color:var(--ink); font-family:inherit;
+  }
+  .route-pick-btn, .route-mylocation-btn{
+    border:none; background:none; color:var(--muted); font-size:14.5px;
+    cursor:pointer; padding:3px 4px; flex-shrink:0; line-height:1; border-radius:5px;
+  }
+  .route-pick-btn:hover, .route-mylocation-btn:hover{ background:#f1efe6; }
+  .route-pick-btn.active{ color:#fff; background:var(--accent); }
+  .route-suggest-list{
+    background:var(--panel); border:1px solid var(--line); border-top:none;
+    border-radius:0 0 8px 8px; max-height:150px; overflow-y:auto; display:none;
+    margin:-2px 0 6px;
+  }
+  .route-suggest-item{
+    padding:7px 10px; font-size:12.5px; cursor:pointer; border-bottom:1px solid var(--line); line-height:1.35;
+  }
+  .route-suggest-item:last-child{ border-bottom:none; }
+  .route-suggest-item:hover{ background:#f1efe6; }
+  #route-swap-btn{
+    border:1px solid var(--line); background:var(--panel); border-radius:50%;
+    width:26px; height:26px; cursor:pointer; font-size:13px; color:var(--muted);
+  }
+  #route-mode-row{ display:flex; gap:6px; margin-top:8px; }
+  .route-mode-btn{
+    flex:1; border:1px solid var(--line); background:var(--panel); color:var(--ink);
+    border-radius:7px; padding:6px 4px; font-size:11.5px; cursor:pointer; text-align:center;
+  }
+  .route-mode-btn.active{ background:var(--accent2); border-color:var(--accent2); color:#fff; }
+  #route-result{ margin-top:8px; font-size:12.5px; line-height:1.6; color:var(--ink); }
+  #route-result b{ color:var(--accent); }
+  #route-result .route-err{ color:var(--accent); font-weight:600; }
+</style>
+<button id="route-toggle-btn" title="Chỉ đường / khoảng cách di chuyển">🧭</button>
+<div id="route-box-wrap" class="hidden">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+    <b style="font-size:13.5px;">🧭 Chỉ đường</b>
+    <button id="route-collapse-btn" title="Đóng" style="border:none;background:none;color:var(--muted);font-size:15px;cursor:pointer;padding:2px 6px;">✕</button>
+  </div>
+
+  <div class="route-field-row">
+    <span class="route-field-dot" style="background:#2f5d50;"></span>
+    <input id="route-from-input" type="text" placeholder="Điểm bắt đầu" autocomplete="off">
+    <button class="route-pick-btn" id="route-from-pick" title="Chọn trên bản đồ">🎯</button>
+    <button class="route-mylocation-btn" id="route-from-mylocation" title="Dùng vị trí của tôi">📍</button>
+  </div>
+  <div id="route-from-suggest" class="route-suggest-list"></div>
+
+  <div style="display:flex;justify-content:center;margin:1px 0;">
+    <button id="route-swap-btn" title="Đảo chiều 2 điểm">⇅</button>
+  </div>
+
+  <div class="route-field-row">
+    <span class="route-field-dot" style="background:#b3541e;"></span>
+    <input id="route-to-input" type="text" placeholder="Điểm đến" autocomplete="off">
+    <button class="route-pick-btn" id="route-to-pick" title="Chọn trên bản đồ">🎯</button>
+  </div>
+  <div id="route-to-suggest" class="route-suggest-list"></div>
+
+  <div id="route-mode-row">
+    <button type="button" class="route-mode-btn active" data-mode="car">🚗 Ô tô / xe máy</button>
+    <button type="button" class="route-mode-btn" data-mode="bike">🚴 Xe đạp</button>
+    <button type="button" class="route-mode-btn" data-mode="foot">🚶 Đi bộ</button>
+  </div>
+
+  <button type="button" id="route-go-btn" class="field-btn" style="margin-top:8px;">🧭 Tìm đường</button>
+  <div id="route-result"></div>
+  <button type="button" id="route-clear-btn" class="field-btn field-btn-secondary" style="margin-top:6px;display:none;">🗑️ Xóa tuyến đường</button>
+</div>
+<script>
+(function(){
+  const NOMINATIM_SEARCH_URL = 'https://nominatim.openstreetmap.org/search';
+  const NOMINATIM_REVERSE_URL = 'https://nominatim.openstreetmap.org/reverse';
+  // Khung tọa độ ưu tiên gợi ý địa chỉ quanh TP.HCM (không chặn cứng nơi khác)
+  const HCM_VIEWBOX = '106.30,11.20,107.10,10.30';
+  // Dịch vụ định tuyến miễn phí OSRM do FOSSGIS vận hành, dữ liệu OpenStreetMap.
+  // Với các máy chủ routed-car/routed-bike/routed-foot, đoạn "profile" trong
+  // URL không được máy chủ dùng để chọn dữ liệu (mỗi máy chủ chỉ nạp đúng 1
+  // bộ dữ liệu riêng) nên luôn dùng "driving" là đủ, không cần đổi theo loại xe.
+  const ROUTE_SERVERS = {
+    car:  'https://routing.openstreetmap.de/routed-car/route/v1/driving/',
+    bike: 'https://routing.openstreetmap.de/routed-bike/route/v1/driving/',
+    foot: 'https://routing.openstreetmap.de/routed-foot/route/v1/driving/'
+  };
+
+  const toggleBtn = document.getElementById('route-toggle-btn');
+  const wrapEl = document.getElementById('route-box-wrap');
+  const collapseBtn = document.getElementById('route-collapse-btn');
+  const fromInput = document.getElementById('route-from-input');
+  const toInput = document.getElementById('route-to-input');
+  const fromSuggestEl = document.getElementById('route-from-suggest');
+  const toSuggestEl = document.getElementById('route-to-suggest');
+  const fromPickBtn = document.getElementById('route-from-pick');
+  const toPickBtn = document.getElementById('route-to-pick');
+  const fromMyLocationBtn = document.getElementById('route-from-mylocation');
+  const swapBtn = document.getElementById('route-swap-btn');
+  const modeRow = document.getElementById('route-mode-row');
+  const goBtn = document.getElementById('route-go-btn');
+  const clearBtn = document.getElementById('route-clear-btn');
+  const resultEl = document.getElementById('route-result');
+
+  let fromPoint = null; // {lat, lon, label}
+  let toPoint = null;
+  let fromMarker = null, toMarker = null, routeLine = null;
+  let pickMode = null; // null | 'from' | 'to'
+  let activeMode = 'car';
+  let debounceTimer = null;
+  let hasRoute = false;
+
+  function openBox(){ wrapEl.classList.remove('hidden'); toggleBtn.style.display = 'none'; }
+  function closeBox(){ wrapEl.classList.add('hidden'); toggleBtn.style.display = 'flex'; }
+  toggleBtn.addEventListener('click', openBox);
+  collapseBtn.addEventListener('click', closeBox);
+
+  function fmtDistance(m){
+    if(m >= 1000) return (m/1000).toFixed(m >= 10000 ? 0 : 1) + ' km';
+    return Math.round(m) + ' m';
+  }
+  function fmtDuration(s){
+    const totalMin = Math.round(s/60);
+    if(totalMin < 60) return totalMin + ' phút';
+    const h = Math.floor(totalMin/60), m = totalMin % 60;
+    return h + ' giờ' + (m ? ' ' + m + ' phút' : '');
+  }
+
+  function makePointIcon(color){
+    return L.divIcon({
+      className: '',
+      html: '<div style="width:16px;height:16px;border-radius:50% 50% 50% 0;background:' + color + ';border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.4);transform:rotate(-45deg);"></div>',
+      iconSize:[16,16], iconAnchor:[8,15]
+    });
+  }
+
+  function setPoint(which, point){
+    if(which === 'from'){
+      fromPoint = point;
+      fromInput.value = point.label;
+      if(!fromMarker){
+        fromMarker = L.marker([point.lat, point.lon], {icon: makePointIcon('#2f5d50'), draggable:true}).addTo(map);
+        fromMarker.on('dragend', function(){
+          const ll = fromMarker.getLatLng();
+          reverseGeocode(ll.lat, ll.lng, function(label){
+            fromPoint = {lat: ll.lat, lon: ll.lng, label: label};
+            fromInput.value = label;
+            if(hasRoute) doRoute();
+          });
+        });
+      } else {
+        fromMarker.setLatLng([point.lat, point.lon]);
+      }
+    } else {
+      toPoint = point;
+      toInput.value = point.label;
+      if(!toMarker){
+        toMarker = L.marker([point.lat, point.lon], {icon: makePointIcon('#b3541e'), draggable:true}).addTo(map);
+        toMarker.on('dragend', function(){
+          const ll = toMarker.getLatLng();
+          reverseGeocode(ll.lat, ll.lng, function(label){
+            toPoint = {lat: ll.lat, lon: ll.lng, label: label};
+            toInput.value = label;
+            if(hasRoute) doRoute();
+          });
+        });
+      } else {
+        toMarker.setLatLng([point.lat, point.lon]);
+      }
+    }
+  }
+
+  function reverseGeocode(lat, lon, cb){
+    const url = NOMINATIM_REVERSE_URL + '?format=json&lat=' + lat + '&lon=' + lon + '&zoom=17';
+    fetch(url).then(function(r){ return r.json(); }).then(function(data){
+      const label = data && data.display_name ? data.display_name.split(',').slice(0,3).join(',') : (lat.toFixed(5) + ', ' + lon.toFixed(5));
+      cb(label);
+    }).catch(function(){
+      cb(lat.toFixed(5) + ', ' + lon.toFixed(5));
+    });
+  }
+
+  // ---- Gợi ý địa chỉ khi gõ (dùng chung cho cả 2 ô) ----
+  function attachSuggest(inputEl, listEl, which){
+    let currentResults = [];
+    function hideList(){ listEl.style.display = 'none'; listEl.innerHTML = ''; currentResults = []; }
+    function renderResults(results){
+      currentResults = results;
+      if(!results.length){ hideList(); return; }
+      listEl.innerHTML = results.map(function(r, i){
+        const parts = (r.display_name || '').split(',');
+        return '<div class="route-suggest-item" data-idx="' + i + '"><b>' + parts[0] + '</b><br><span style="color:var(--muted);font-size:11px;">' + parts.slice(1).join(',').trim() + '</span></div>';
+      }).join('');
+      listEl.style.display = 'block';
+      listEl.querySelectorAll('.route-suggest-item').forEach(function(el){
+        el.addEventListener('click', function(){
+          const r = currentResults[parseInt(el.getAttribute('data-idx'), 10)];
+          hideList();
+          setPoint(which, {lat: parseFloat(r.lat), lon: parseFloat(r.lon), label: (r.display_name || '').split(',').slice(0,3).join(',')});
+        });
+      });
+    }
+    inputEl.addEventListener('input', function(){
+      const q = inputEl.value.trim();
+      if(debounceTimer) clearTimeout(debounceTimer);
+      if(q.length < 3){ hideList(); return; }
+      debounceTimer = setTimeout(function(){
+        const url = NOMINATIM_SEARCH_URL + '?format=json&limit=5&addressdetails=0&viewbox=' + HCM_VIEWBOX + '&q=' + encodeURIComponent(q);
+        fetch(url).then(function(r){ return r.json(); }).then(renderResults).catch(function(){ hideList(); });
+      }, 400);
+    });
+    document.addEventListener('click', function(e){
+      if(!inputEl.contains(e.target) && !listEl.contains(e.target)){ hideList(); }
+    });
+  }
+  attachSuggest(fromInput, fromSuggestEl, 'from');
+  attachSuggest(toInput, toSuggestEl, 'to');
+
+  // ---- Chọn điểm trực tiếp trên bản đồ ----
+  function togglePickMode(which, btn){
+    if(pickMode === which){
+      pickMode = null; btn.classList.remove('active'); map.getContainer().style.cursor = '';
+    } else {
+      if(pickMode === 'from') fromPickBtn.classList.remove('active');
+      if(pickMode === 'to') toPickBtn.classList.remove('active');
+      pickMode = which; btn.classList.add('active'); map.getContainer().style.cursor = 'crosshair';
+    }
+  }
+  fromPickBtn.addEventListener('click', function(){ togglePickMode('from', fromPickBtn); });
+  toPickBtn.addEventListener('click', function(){ togglePickMode('to', toPickBtn); });
+
+  map.on('click', function(e){
+    if(!pickMode) return;
+    const which = pickMode;
+    const btn = which === 'from' ? fromPickBtn : toPickBtn;
+    pickMode = null; btn.classList.remove('active'); map.getContainer().style.cursor = '';
+    reverseGeocode(e.latlng.lat, e.latlng.lng, function(label){
+      setPoint(which, {lat: e.latlng.lat, lon: e.latlng.lng, label: label});
+    });
+  });
+
+  // ---- Dùng vị trí hiện tại của tôi (tận dụng GPS đang bật nếu có) ----
+  fromMyLocationBtn.addEventListener('click', function(){
+    if(typeof userMarker !== 'undefined' && userMarker){
+      const ll = userMarker.getLatLng();
+      setPoint('from', {lat: ll.lat, lon: ll.lng, label: 'Vị trí của tôi'});
+      return;
+    }
+    if(!navigator.geolocation){ alert('Trình duyệt không hỗ trợ định vị.'); return; }
+    fromMyLocationBtn.textContent = '⏳';
+    navigator.geolocation.getCurrentPosition(function(pos){
+      fromMyLocationBtn.textContent = '📍';
+      setPoint('from', {lat: pos.coords.latitude, lon: pos.coords.longitude, label: 'Vị trí của tôi'});
+    }, function(err){
+      fromMyLocationBtn.textContent = '📍';
+      alert('Không lấy được vị trí: ' + err.message);
+    }, {enableHighAccuracy:true, timeout:15000});
+  });
+
+  // ---- Đảo chiều 2 điểm ----
+  swapBtn.addEventListener('click', function(){
+    const tmp = fromPoint; fromPoint = toPoint; toPoint = tmp;
+    const tmpVal = fromInput.value; fromInput.value = toInput.value; toInput.value = tmpVal;
+    if(fromPoint) setPoint('from', fromPoint); else if(fromMarker){ map.removeLayer(fromMarker); fromMarker = null; }
+    if(toPoint) setPoint('to', toPoint); else if(toMarker){ map.removeLayer(toMarker); toMarker = null; }
+    if(hasRoute) doRoute();
+  });
+
+  // ---- Chọn phương tiện ----
+  modeRow.querySelectorAll('.route-mode-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      modeRow.querySelectorAll('.route-mode-btn').forEach(function(b){ b.classList.remove('active'); });
+      btn.classList.add('active');
+      activeMode = btn.getAttribute('data-mode');
+      if(hasRoute) doRoute();
+    });
+  });
+
+  // ---- Nếu người dùng gõ tay rồi bấm Tìm đường mà chưa chọn gợi ý nào,
+  // tự động geocode nhanh chuỗi đã gõ (lấy kết quả đầu tiên) ----
+  function resolvePointFromInput(inputEl, existingPoint, which, cb){
+    if(existingPoint){ cb(existingPoint); return; }
+    const q = inputEl.value.trim();
+    if(!q){ cb(null); return; }
+    const url = NOMINATIM_SEARCH_URL + '?format=json&limit=1&viewbox=' + HCM_VIEWBOX + '&q=' + encodeURIComponent(q);
+    fetch(url).then(function(r){ return r.json(); }).then(function(results){
+      if(!results.length){ cb(null); return; }
+      const r = results[0];
+      const point = {lat: parseFloat(r.lat), lon: parseFloat(r.lon), label: (r.display_name || '').split(',').slice(0,3).join(',')};
+      setPoint(which, point);
+      cb(point);
+    }).catch(function(){ cb(null); });
+  }
+
+  function doRoute(){
+    if(!fromPoint || !toPoint) return;
+    resultEl.innerHTML = 'Đang tìm đường...';
+    const coords = fromPoint.lon + ',' + fromPoint.lat + ';' + toPoint.lon + ',' + toPoint.lat;
+    const url = ROUTE_SERVERS[activeMode] + coords + '?overview=full&geometries=geojson';
+    fetch(url).then(function(r){ return r.json(); }).then(function(data){
+      if(!data || data.code !== 'Ok' || !data.routes || !data.routes.length){
+        resultEl.innerHTML = '<span class="route-err">Không tìm được tuyến đường phù hợp giữa 2 điểm này.</span>';
+        return;
+      }
+      const route = data.routes[0];
+      if(routeLine) map.removeLayer(routeLine);
+      const latlngs = route.geometry.coordinates.map(function(c){ return [c[1], c[0]]; });
+      routeLine = L.polyline(latlngs, {color:'#2563eb', weight:5, opacity:0.85, className:'route-line'}).addTo(map);
+      map.fitBounds(routeLine.getBounds(), {padding:[40,40]});
+      const modeLabel = activeMode === 'car' ? 'Ô tô/xe máy' : (activeMode === 'bike' ? 'Xe đạp' : 'Đi bộ');
+      resultEl.innerHTML =
+        '<b>' + fmtDistance(route.distance) + '</b> — khoảng <b>' + fmtDuration(route.duration) + '</b> (' + modeLabel + ')' +
+        '<br><span style="color:var(--muted);font-size:11px;">Dữ liệu chỉ đường: © OpenStreetMap contributors</span>';
+      hasRoute = true;
+      clearBtn.style.display = 'block';
+    }).catch(function(){
+      resultEl.innerHTML = '<span class="route-err">Lỗi kết nối tới dịch vụ chỉ đường. Thử lại sau.</span>';
+    });
+  }
+
+  goBtn.addEventListener('click', function(){
+    resolvePointFromInput(fromInput, fromPoint, 'from', function(fp){
+      if(!fp){ resultEl.innerHTML = '<span class="route-err">Chưa xác định được điểm bắt đầu — hãy gõ địa chỉ và chọn 1 gợi ý, hoặc bấm 🎯/📍.</span>'; return; }
+      resolvePointFromInput(toInput, toPoint, 'to', function(tp){
+        if(!tp){ resultEl.innerHTML = '<span class="route-err">Chưa xác định được điểm đến — hãy gõ địa chỉ và chọn 1 gợi ý, hoặc bấm 🎯.</span>'; return; }
+        doRoute();
+      });
+    });
+  });
+
+  clearBtn.addEventListener('click', function(){
+    if(routeLine){ map.removeLayer(routeLine); routeLine = null; }
+    if(fromMarker){ map.removeLayer(fromMarker); fromMarker = null; }
+    if(toMarker){ map.removeLayer(toMarker); toMarker = null; }
+    fromPoint = null; toPoint = null; hasRoute = false;
+    fromInput.value = ''; toInput.value = '';
+    resultEl.innerHTML = '';
+    clearBtn.style.display = 'none';
+  });
+})();
+</script>
+<!-- =====================================================================
+     KẾT THÚC KHỐI: Chỉ đường / khoảng cách di chuyển
+     ===================================================================== -->
 </body>
 </html>
