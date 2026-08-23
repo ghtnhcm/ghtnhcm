@@ -2328,8 +2328,8 @@ document.getElementById('btn-admin-wipe-leads').addEventListener('click', async 
   const SHEET2_GID = '1307627386';
   const SHEET2_URL = 'https://docs.google.com/spreadsheets/d/' + SHEET2_ID + '/gviz/tq?tqx=out:json&gid=' + SHEET2_GID;
 
-  // A=0,B=1,C=2,D=3,E=4,F=5,G=6,H=7,I=8
-  const COL2 = { name: 2, address: 3, lat: 4, lng: 5, phone: 6, birthYear: 7, checkCol: 8 };
+  // A=0,B=1,C=2,D=3,E=4,F=5,G=6,H=7,I=8,J=9,K=10
+const COL2 = { name: 2, address: 3, lat: 4, lng: 5, phone: 6, birthYear: 7, checkCol: 10 };
 
   const candidate2Layer = L.layerGroup().addTo(map);
   if (typeof layerGroups !== 'undefined') layerGroups['sheet2_candidates'] = candidate2Layer;
