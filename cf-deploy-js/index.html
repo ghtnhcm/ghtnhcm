@@ -2322,6 +2322,110 @@ document.getElementById('btn-admin-wipe-leads').addEventListener('click', async 
   loadCandidatesFromSheet();
 })();
 </script>
+<script>
+(function(){
+  const SHEET2_ID = '1N7x8rZCBEg2JY9eDBYcNbn2Y0sSWsqyTH99xRcRWsrw';
+  const SHEET2_GID = '1307627386';
+  const SHEET2_URL = 'https://docs.google.com/spreadsheets/d/' + SHEET2_ID + '/gviz/tq?tqx=out:json&gid=' + SHEET2_GID;
+
+  // A=0,B=1,C=2,D=3,E=4,F=5,G=6,H=7,I=8
+  const COL2 = { name: 2, address: 3, lat: 4, lng: 5, phone: 6, birthYear: 7, checkCol: 8 };
+
+  const candidate2Layer = L.layerGroup().addTo(map);
+  if (typeof layerGroups !== 'undefined') layerGroups['sheet2_candidates'] = candidate2Layer;
+
+  function candidate2Icon(){
+    return L.divIcon({
+      className: 'poi-div-icon',
+      html: '<div style="background:#8e24aa;width:26px;height:26px;border-radius:50%;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;font-size:14px;line-height:1;color:#fff;">🎓</div>',
+      iconSize: [26, 26], iconAnchor: [13, 13], popupAnchor: [0, -13]
+    });
+  }
+
+  function cellText2(row, index){
+    const cell = (row.c || [])[index];
+    if (!cell) return '';
+    if (cell.f !== undefined && cell.f !== null && cell.f !== '') return cell.f;
+    if (cell.v !== undefined && cell.v !== null) return cell.v;
+    return '';
+  }
+  function cellNumber2(row, index){
+    const cell = (row.c || [])[index];
+    if (!cell || cell.v === undefined || cell.v === null || cell.v === '') return NaN;
+    return typeof cell.v === 'number' ? cell.v : parseFloat(cell.v);
+  }
+
+  function buildPopup2El(name, phone, address, birthYear){
+    const wrap = document.createElement('div');
+    const b = document.createElement('b');
+    b.textContent = name || '(Không tên)';
+    wrap.appendChild(b);
+    if (birthYear) wrap.appendChild(document.createTextNode(' (' + birthYear + ')'));
+    if (phone) { wrap.appendChild(document.createElement('br')); wrap.appendChild(document.createTextNode('📞 ' + phone)); }
+    if (address) { wrap.appendChild(document.createElement('br')); wrap.appendChild(document.createTextNode('📍 ' + address)); }
+    return wrap;
+  }
+
+  async function loadCandidates2FromSheet(){
+    const statusEl = document.getElementById('sheet2-candidate-status');
+    const btn = document.getElementById('btn-sheet2-refresh');
+    if (btn) btn.disabled = true;
+    if (statusEl) statusEl.textContent = 'Đang tải dữ liệu từ Google Sheet...';
+    try {
+      const res = await fetch(SHEET2_URL, { cache: 'no-store' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const text = await res.text();
+      const start = text.indexOf('{');
+      const end = text.lastIndexOf('}');
+      if (start === -1 || end === -1) throw new Error('Không đọc được dữ liệu trả về (sheet có đang public không?)');
+      const data = JSON.parse(text.substring(start, end + 1));
+      const rows = (data.table && data.table.rows) || [];
+
+      candidate2Layer.clearLayers();
+      let shown = 0, skippedNoCoord = 0, skippedFiltered = 0;
+
+      for (const row of rows) {
+        const checkColValue = String(cellText2(row, COL2.checkCol)).trim();
+        if (checkColValue) { skippedFiltered++; continue; } // chỉ giữ dòng có cột I TRỐNG
+
+        const lat = cellNumber2(row, COL2.lat);
+        const lng = cellNumber2(row, COL2.lng);
+        if (!isFinite(lat) || !isFinite(lng) || (lat === 0 && lng === 0)) { skippedNoCoord++; continue; }
+
+        const name = String(cellText2(row, COL2.name) || '').trim();
+        const phone = String(cellText2(row, COL2.phone) || '').trim();
+        const address = String(cellText2(row, COL2.address) || '').trim();
+        const birthYear = String(cellText2(row, COL2.birthYear) || '').trim();
+
+        const marker = L.marker([lat, lng], { icon: candidate2Icon() });
+        marker.bindPopup(buildPopup2El(name, phone, address, birthYear));
+        candidate2Layer.addLayer(marker);
+        shown++;
+      }
+
+      const cntEl = document.getElementById('cnt-sheet2_candidates');
+      if (cntEl) cntEl.textContent = '(' + shown + ')';
+
+      if (statusEl) {
+        let msg = 'Đã tải ' + shown + ' ứng viên.';
+        if (skippedFiltered) msg += ' Đã bỏ ' + skippedFiltered + ' người đã có cột I.';
+        if (skippedNoCoord) msg += ' Bỏ qua ' + skippedNoCoord + ' dòng thiếu tọa độ.';
+        statusEl.textContent = msg;
+      }
+    } catch (err) {
+      console.error('Lỗi tải ứng viên phỏng vấn từ Google Sheet:', err);
+      if (statusEl) statusEl.textContent = '⚠️ Lỗi tải dữ liệu: ' + err.message;
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  const btn2 = document.getElementById('btn-sheet2-refresh');
+  if (btn2) btn2.addEventListener('click', loadCandidates2FromSheet);
+
+  loadCandidates2FromSheet();
+})();
+</script>
   <!-- =====================================================================
      KHỐI: Tra cứu / tìm kiếm địa chỉ (Nominatim - OpenStreetMap, miễn phí)
      - Ô tìm kiếm nổi trên bản đồ, gõ địa chỉ là hiện gợi ý bên dưới.
