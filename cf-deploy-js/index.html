@@ -1245,18 +1245,79 @@ btnAdminRefresh.addEventListener('click', async function(){
       adminParticipantListEl.innerHTML = '(Không có ai có dữ liệu lưu trên server)';
       return;
     }
-    adminParticipantListEl.innerHTML = ids.map(function(id){
-      return '<label style="display:flex;align-items:center;gap:6px;padding:3px 0;">' +
-        '<input type="checkbox" class="admin-pid" value="' + id + '"> ' + (names[id] || 'Không tên') +
-        '</label>';
+    // Gộp theo tên đã chuẩn hoá (bỏ khoảng trắng thừa quanh dấu "-", không phân
+    // biệt hoa/thường) — vì mỗi lần đổi thiết bị/xoá cache trình duyệt, hệ thống
+    // tự sinh id mới cho cùng một người, nên 1 người thật có thể có nhiều id
+    // (nhiều dòng) dù tên gõ gần giống nhau (VD "PT1 - My" và "PT1-My").
+    const normalizeNameKey = function(name){
+      return (name || 'Không tên').trim().toLowerCase().replace(/\s*-\s*/g, '-').replace(/\s+/g, ' ');
+    };
+    const groups = {};
+    ids.forEach(function(id){
+      const rawName = names[id] || 'Không tên';
+      const key = normalizeNameKey(rawName);
+      if(!groups[key]) groups[key] = { label: rawName, ids: [] };
+      groups[key].ids.push(id);
+    });
+    adminParticipantListEl.innerHTML = Object.keys(groups).map(function(key){
+      const g = groups[key];
+      const suffix = g.ids.length > 1 ? ' <span style="color:#999;">(' + g.ids.length + ' thiết bị)</span>' : '';
+      return '<div style="display:flex;align-items:center;gap:6px;padding:3px 0;">' +
+        '<label style="display:flex;align-items:center;gap:6px;flex:1;min-width:0;">' +
+        '<input type="checkbox" class="admin-pid" value="' + g.ids.join(',') + '">' +
+        '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + g.label + suffix + '</span>' +
+        '</label>' +
+        '<button type="button" class="admin-rename-btn" data-ids="' + g.ids.join(',') + '" data-name="' + g.label.replace(/"/g, '&quot;') + '" ' +
+        'style="border:none;background:none;color:#b3541e;font-size:11px;cursor:pointer;padding:2px 4px;flex-shrink:0;">✏️ Đổi tên</button>' +
+        '</div>';
     }).join('');
   }catch(e){
     adminParticipantListEl.textContent = 'Không tải được danh sách, thử lại.';
   }
 });
 
+// Đổi tên (Admin) — gộp/sửa tên hiển thị của 1 người (có thể gồm nhiều id
+// thiết bị đã gộp chung 1 dòng). Cập nhật cả tên hiện tại lẫn tên trên các
+// điểm trail cũ đã lưu, nên nhãn cũ trên bản đồ cũng đổi theo. Dùng chung
+// mật khẩu quản trị với chức năng xoá.
+adminParticipantListEl.addEventListener('click', async function(e){
+  const btn = e.target.closest('.admin-rename-btn');
+  if(!btn) return;
+  const ids = btn.dataset.ids.split(',');
+  const currentName = btn.dataset.name || '';
+  const newName = prompt('Đổi tên hiển thị thành:', currentName);
+  if(newName === null) return; // bấm Cancel
+  const trimmed = newName.trim();
+  if(!trimmed || trimmed === currentName) return;
+
+  const key = prompt('Nhập mật khẩu quản trị:');
+  if(!key) return;
+
+  adminStatus.textContent = 'Đang đổi tên...';
+  try{
+    const res = await fetch(GROUP_API, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'x-admin-key': key },
+      body: JSON.stringify({ ids: ids, name: trimmed })
+    });
+    if(res.status === 204){
+      adminStatus.textContent = 'Đã đổi tên xong.';
+      btnAdminRefresh.click();
+    } else if(res.status === 401){
+      adminStatus.textContent = 'Sai mật khẩu quản trị.';
+    } else {
+      adminStatus.textContent = 'Đổi tên thất bại (' + res.status + ').';
+    }
+  }catch(err){
+    adminStatus.textContent = 'Lỗi mạng, thử lại.';
+  }
+});
+
 btnAdminWipe.addEventListener('click', async function(){
-  const selectedIds = Array.from(document.querySelectorAll('.admin-pid:checked')).map(function(el){ return el.value; });
+  // Mỗi checkbox có thể đại diện nhiều id đã gộp chung 1 dòng (cùng 1 người,
+  // nhiều thiết bị) — tách ra thành danh sách id riêng lẻ trước khi gửi lên server.
+  const selectedIds = Array.from(document.querySelectorAll('.admin-pid:checked'))
+    .reduce(function(acc, el){ return acc.concat(el.value.split(',')); }, []);
   const fromVal = adminFromEl.value;
   const toVal = adminToEl.value;
 
