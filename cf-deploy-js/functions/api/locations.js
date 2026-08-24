@@ -132,25 +132,30 @@ export const onRequestGet = async ({ request, env }) => {
   // MAX_SESSIONS_PER_PARTICIPANT), one row per session — not just their
   // single latest one. This is what lets multiple days of trail show up
   // instead of only the most recent day. Still a small result set (one row
-  // per session, not per point) and still filtered entirely in SQL via a
-  // window function, so it doesn't reintroduce the per-participant query
-  // loop or the "pull everything into JS" problem noted above.
+  // per session, not per point) and still filtered entirely in SQL, so it
+  // doesn't reintroduce the per-participant query loop or the "pull
+  // everything into JS" problem noted above.
+  // (Deliberately avoids ROW_NUMBER()/window functions here — a CTE +
+  // correlated-subquery rank check instead, since it's the more broadly
+  // compatible SQLite syntax across D1 versions.)
   const latestSessions = (
     await env.DB.prepare(
-      `SELECT participantId, sessionId, name FROM (
+      `WITH session_max AS (
          SELECT lh.participant_id AS participantId,
                 lh.session_id AS sessionId,
                 lh.name AS name,
-                MAX(lh.recorded_at) AS max_recorded_at,
-                ROW_NUMBER() OVER (
-                  PARTITION BY lh.participant_id
-                  ORDER BY MAX(lh.recorded_at) DESC
-                ) AS rn
+                MAX(lh.recorded_at) AS max_recorded_at
          FROM location_history lh
          WHERE lh.recorded_at > ?
          GROUP BY lh.participant_id, lh.session_id
-       ) ranked
-       WHERE rn <= ?`
+       )
+       SELECT participantId, sessionId, name
+       FROM session_max sm
+       WHERE (
+         SELECT COUNT(*) FROM session_max sm2
+         WHERE sm2.participantId = sm.participantId
+           AND sm2.max_recorded_at > sm.max_recorded_at
+       ) < ?`
     )
       .bind(trailCutoffSec, MAX_SESSIONS_PER_PARTICIPANT)
       .all()
