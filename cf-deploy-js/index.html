@@ -93,6 +93,7 @@
   .trail-line{
     filter: drop-shadow(0 0 1.6px #fff) drop-shadow(0 0 1.6px #fff) drop-shadow(0 0 2.5px rgba(0,0,0,.55));
   }
+  .day-label-icon{ background:transparent !important; border:none !important; }
   #footer-note{
     font-size:11px;
     color:var(--muted);
@@ -278,7 +279,6 @@
     <button id="btn-groupshare" class="field-btn field-btn-secondary">👥 Chia sẻ vị trí với nhóm</button>
     <div class="legend-note" id="group-status"></div>
     <div class="legend-note">Cả nhóm cùng bật sẽ thấy vị trí &amp; hành trình của nhau (tự ẩn sau ~90 giây nếu tắt/mất kết nối; hành trình lưu 90 ngày).</div>
-    <button id="btn-clear-trail" class="field-btn field-btn-secondary" style="margin-top:6px;">🗑️ Xóa hành trình của tôi</button>
 
     <details class="field-group">
       <summary>✏️ Ghi chú điểm khảo sát</summary>
@@ -910,16 +910,16 @@ function dayLabelIcon(text, color){
     iconSize: null, iconAnchor: [10, 10]
   });
 }
-// Tách các điểm của 1 hành trình thành từng ngày (theo giờ địa phương), trả về
-// điểm đầu tiên của mỗi ngày (trừ ngày đầu tiên, đã có nhãn tên/điểm xuất phát).
+// Tách các điểm của 1 hành trình thành từng ngày (theo giờ địa phương): luôn có
+// nhãn ở điểm bắt đầu hành trình, rồi thêm 1 nhãn mỗi khi hành trình sang ngày mới.
 function computeDayBreaks(points){
   const breaks = [];
   let lastDayKey = null;
-  points.forEach(function(p, idx){
+  points.forEach(function(p){
     const d = new Date(p.t);
     const dayKey = d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate();
     if(dayKey !== lastDayKey){
-      if(lastDayKey !== null) breaks.push({ lat: p.lat, lng: p.lng, date: d });
+      breaks.push({ lat: p.lat, lng: p.lng, date: d });
       lastDayKey = dayKey;
     }
   });
@@ -1272,19 +1272,7 @@ btnAdminWipe.addEventListener('click', async function(){
 
 // Xóa hẳn lịch sử hành trình của chính mình khỏi server (khác với việc tắt
 // chia sẻ, vốn chỉ ẩn dot hiện tại chứ không xóa đường đi đã lưu).
-const btnClearTrail = document.getElementById('btn-clear-trail');
-btnClearTrail.addEventListener('click', async function(){
-  if(!confirm('Xóa toàn bộ lịch sử hành trình của bạn? Đường đi của bạn sẽ biến mất khỏi bản đồ của cả nhóm và không thể khôi phục.')) return;
-  try{
-    await fetch(GROUP_API + '?id=' + encodeURIComponent(myId) + '&history=1', {method:'DELETE'});
-    if(trailLines[myId]){ map.removeLayer(trailLines[myId]); delete trailLines[myId]; }
-    (stopMarkers[myId] || []).forEach(function(m){ map.removeLayer(m); });
-    delete stopMarkers[myId];
-    groupStatus.textContent = 'Đã xóa lịch sử hành trình của bạn.';
-  }catch(e){
-    groupStatus.textContent = 'Không xóa được do lỗi mạng, thử lại sau.';
-  }
-});
+// (Đã bỏ nút "Xóa hành trình của tôi" khỏi giao diện theo yêu cầu.)
 
 btnGroupShare.addEventListener('click', function(){
   if(groupSharing){ stopGroupSharing(); return; }
