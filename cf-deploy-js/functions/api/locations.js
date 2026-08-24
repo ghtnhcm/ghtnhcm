@@ -166,12 +166,18 @@ export const onRequestGet = async ({ request, env }) => {
        JOIN ranked_sessions rs
          ON rs.sessionId = lh.session_id AND rs.participantId = lh.participant_id
        WHERE rs.rnk < ?
-       ORDER BY lh.recorded_at ASC
+       ORDER BY lh.recorded_at DESC
        LIMIT ?`
     )
       .bind(trailCutoffSec, MAX_SESSIONS_PER_PARTICIPANT, MAX_TOTAL_HISTORY_POINTS)
       .all()
   ).results ?? [];
+
+  // Query fetched newest-first (so the LIMIT keeps the most recent points
+  // when the total exceeds MAX_TOTAL_HISTORY_POINTS, instead of silently
+  // dropping recent days in favor of old ones) — flip back to chronological
+  // order before building each participant's trail line.
+  points.reverse();
 
   const trails = {};
   for (const row of rows) trails[row.id] = { name: row.name, points: [] };
