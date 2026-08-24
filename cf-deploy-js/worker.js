@@ -1,4 +1,4 @@
-import { onRequestGet, onRequestPost, onRequestDelete } from './functions/api/locations.js';
+import { onRequestGet, onRequestPost, onRequestDelete, onRequestPatch } from './functions/api/locations.js';
 import {
   onRequestGet as onRequestGetLeads,
   onRequestPost as onRequestPostLeads,
@@ -14,6 +14,7 @@ export default {
       const c = { request, env, ctx };
       if (request.method === 'GET') return onRequestGet(c);
       if (request.method === 'POST') return onRequestPost(c);
+      if (request.method === 'PATCH') return onRequestPatch(c);
       if (request.method === 'DELETE') return onRequestDelete(c);
       return new Response('Method not allowed', { status: 405 });
     }
