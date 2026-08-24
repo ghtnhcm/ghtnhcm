@@ -16,6 +16,13 @@ const MAX_HISTORY_POINTS_PER_SESSION = 5000;
 // Safety cap on total trail points fetched across ALL participants in one
 // history request (single batched query — see onRequestGet below).
 const MAX_TOTAL_HISTORY_POINTS = 20000;
+// Raw GPS pings can come in every few seconds; drawing every single one
+// isn't needed for a readable trail line. Points are downsampled in SQL to
+// at most one per this many seconds, per session, BEFORE the
+// MAX_TOTAL_HISTORY_POINTS cap is applied — otherwise a single busy day
+// across a large group can produce tens of thousands of raw points and eat
+// the entire budget by itself, starving every other day's trail.
+const TRAIL_DOWNSAMPLE_SECONDS = 60;
 // How far back (in time) trail sessions are still pulled into the map.
 // Matches HISTORY_RETENTION_MS so every point still in the database (up to
 // the permanent-deletion cutoff) is visible on the map — nothing is hidden
@@ -158,17 +165,33 @@ export const onRequestGet = async ({ request, env }) => {
             WHERE sm2.participantId = sm.participantId
               AND sm2.max_recorded_at > sm.max_recorded_at) AS rnk
          FROM session_max sm
+       ),
+       -- Downsample: pick one representative row (the earliest ping) per
+       -- (session, time-bucket) pair, via GROUP BY + MIN(id) — plain
+       -- aggregation, not a window function, for broad D1/SQLite
+       -- compatibility. This collapses frequent pings (every few seconds)
+       -- down to at most one point per TRAIL_DOWNSAMPLE_SECONDS, per session,
+       -- so a busy day across a large group can't eat the whole point budget.
+       bucket_rep AS (
+         SELECT lh.session_id AS sessionId, lh.participant_id AS participantId,
+                CAST(lh.recorded_at / ? AS INTEGER) AS bucket,
+                MIN(lh.id) AS repId
+         FROM location_history lh
+         JOIN ranked_sessions rs
+           ON rs.sessionId = lh.session_id AND rs.participantId = lh.participant_id
+         WHERE rs.rnk < ?
+         GROUP BY lh.session_id, lh.participant_id, bucket
        )
        SELECT lh.participant_id AS participantId, rs.name AS name,
               lh.lat AS lat, lh.lng AS lng, lh.recorded_at AS recordedAt
-       FROM location_history lh
+       FROM bucket_rep br
+       JOIN location_history lh ON lh.id = br.repId
        JOIN ranked_sessions rs
          ON rs.sessionId = lh.session_id AND rs.participantId = lh.participant_id
-       WHERE rs.rnk < ?
        ORDER BY lh.recorded_at DESC
        LIMIT ?`
     )
-      .bind(trailCutoffSec, MAX_SESSIONS_PER_PARTICIPANT, MAX_TOTAL_HISTORY_POINTS)
+      .bind(trailCutoffSec, TRAIL_DOWNSAMPLE_SECONDS, MAX_SESSIONS_PER_PARTICIPANT, MAX_TOTAL_HISTORY_POINTS)
       .all()
   ).results ?? [];
 
