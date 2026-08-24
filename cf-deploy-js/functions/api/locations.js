@@ -216,6 +216,41 @@ export const onRequestGet = async ({ request, env }) => {
   return Response.json({ locations: rows, trails });
 };
 
+// Admin-only: rename a participant (or several ids at once — e.g. a group of
+// device ids that turned out to be the same real person). Updates the name
+// everywhere it's stored: the live dot (live_locations) AND every past trail
+// point (location_history), so old trail popups/labels show the corrected
+// name too, not just the current live marker. Gated the same way as delete
+// (env.ADMIN_KEY via the x-admin-key header).
+export const onRequestPatch = async ({ request, env }) => {
+  const db = getDb(env.DB);
+
+  const providedKey = request.headers.get("x-admin-key") || "";
+  if (!env.ADMIN_KEY || providedKey !== env.ADMIN_KEY) {
+    return Response.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json({ error: "invalid JSON" }, { status: 400 });
+  }
+
+  const { ids, name } = body ?? {};
+  const isValidIds = Array.isArray(ids) && ids.length > 0 && ids.every((id) => typeof id === "string" && id.length > 0 && id.length <= MAX_ID_LEN);
+  const isValidName = typeof name === "string" && name.trim().length > 0;
+  if (!isValidIds || !isValidName) {
+    return Response.json({ error: "invalid payload" }, { status: 400 });
+  }
+  const cleanName = name.trim().slice(0, MAX_NAME_LEN);
+
+  await db.update(liveLocations).set({ name: cleanName }).where(inArray(liveLocations.id, ids));
+  await db.update(locationHistory).set({ name: cleanName }).where(inArray(locationHistory.participantId, ids));
+
+  return new Response(null, { status: 204 });
+};
+
 export const onRequestDelete = async ({ request, env }) => {
   const db = getDb(env.DB);
   const url = new URL(request.url);
