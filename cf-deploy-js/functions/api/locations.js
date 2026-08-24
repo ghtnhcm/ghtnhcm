@@ -16,13 +16,12 @@ const MAX_HISTORY_POINTS_PER_SESSION = 5000;
 // Safety cap on total trail points fetched across ALL participants in one
 // history request (single batched query — see onRequestGet below).
 const MAX_TOTAL_HISTORY_POINTS = 20000;
-// How far back (in time) trail sessions are still pulled into the map, so
-// multi-day routes ("hành trình lưu 90 ngày") actually show up — not just
-// today's. The points were never deleted from the database before this (only
-// HISTORY_RETENTION_MS controls permanent deletion); this just controlled how
-// far back the *API* looked. Extend this if survey trips should stay visible
-// on the map for longer than a week.
-const TRAIL_VISIBILITY_MS = 7 * 24 * 60 * 60 * 1000; // 7 ngày
+// How far back (in time) trail sessions are still pulled into the map.
+// Matches HISTORY_RETENTION_MS so every point still in the database (up to
+// the permanent-deletion cutoff) is visible on the map — nothing is hidden
+// by the API before it's actually deleted. If HISTORY_RETENTION_MS changes,
+// change this too so the two stay in sync.
+const TRAIL_VISIBILITY_MS = HISTORY_RETENTION_MS; // ~3 tháng, khớp thời gian lưu trữ
 // Each time someone turns location-sharing back on, a new sessionId starts —
 // so a multi-day trail is really several sessions per participant. This caps
 // how many of a person's most recent sessions we pull (roughly "how many
