@@ -887,6 +887,38 @@ const wasSharing = localStorage.getItem('khaosat-sharing') === '1';
 const otherMarkers = {}; // id -> Leaflet marker
 const trailLines = {}; // id -> Leaflet polyline (hành trình di chuyển của người đó)
 const stopMarkers = {}; // id -> mảng Leaflet marker các điểm nghỉ
+const dayLabelMarkers = {}; // id -> mảng Leaflet marker ghi chú ngày trên hành trình
+
+// Style + hàm tạo nhãn ngày (đặt gần đầu mỗi ngày trên đường hành trình)
+function formatDayLabel(dateObj){
+  const dd = String(dateObj.getDate()).padStart(2, '0');
+  const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+  return dd + '/' + mm;
+}
+function dayLabelIcon(text, color){
+  return L.divIcon({
+    className: 'day-label-icon',
+    html: '<div style="background:' + color + ';color:#fff;font-size:11px;font-weight:700;' +
+      'padding:2px 7px;border-radius:10px;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35);' +
+      'white-space:nowrap;">' + text + '</div>',
+    iconSize: null, iconAnchor: [10, 10]
+  });
+}
+// Tách các điểm của 1 hành trình thành từng ngày (theo giờ địa phương), trả về
+// điểm đầu tiên của mỗi ngày (trừ ngày đầu tiên, đã có nhãn tên/điểm xuất phát).
+function computeDayBreaks(points){
+  const breaks = [];
+  let lastDayKey = null;
+  points.forEach(function(p, idx){
+    const d = new Date(p.t);
+    const dayKey = d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate();
+    if(dayKey !== lastDayKey){
+      if(lastDayKey !== null) breaks.push({ lat: p.lat, lng: p.lng, date: d });
+      lastDayKey = dayKey;
+    }
+  });
+  return breaks;
+}
 
 // Giữ màn hình sáng trong lúc đang chia sẻ, để hệ điều hành đỡ tự tạm dừng
 // GPS/JS chạy nền — nguyên nhân phổ biến nhất khiến bạn "rớt" khỏi bản đồ nhóm.
@@ -1003,6 +1035,10 @@ function clearOtherMarkers(){
 function clearTrailLines(){
   Object.keys(trailLines).forEach(function(id){ map.removeLayer(trailLines[id]); });
   for(const id in trailLines){ delete trailLines[id]; }
+  Object.keys(dayLabelMarkers).forEach(function(id){
+    (dayLabelMarkers[id] || []).forEach(function(m){ map.removeLayer(m); });
+  });
+  for(const id in dayLabelMarkers){ delete dayLabelMarkers[id]; }
 }
 
 function drawTrails(trails){
@@ -1020,11 +1056,12 @@ function drawTrails(trails){
       'Thời gian: ' + formatDuration(stats.durationMs) +
       (stops.length ? '<br>Số điểm nghỉ: ' + stops.length : '');
 
+    const trailColor = isMe ? '#2563eb' : colorForId(id);
     if(!trailLines[id]){
       trailLines[id] = L.polyline(latlngs, {
-        color: isMe ? '#2563eb' : colorForId(id),
-        weight: 3,
-        opacity: 0.75,
+        color: trailColor,
+        weight: 4.5,
+        opacity: 0.85,
         dashArray: isMe ? null : '1 6',
         lineCap: 'round',
         className: 'route-line'
@@ -1033,6 +1070,18 @@ function drawTrails(trails){
       trailLines[id].setLatLngs(latlngs);
     }
     trailLines[id].bindPopup(popupHtml);
+
+    // Ghi chú ngày dọc theo hành trình (mỗi khi sang ngày mới)
+    (dayLabelMarkers[id] || []).forEach(function(m){ map.removeLayer(m); });
+    const dayBreaks = computeDayBreaks(trail.points);
+    dayLabelMarkers[id] = dayBreaks.map(function(b){
+      const marker = L.marker([b.lat, b.lng], {
+        icon: dayLabelIcon(formatDayLabel(b.date), trailColor),
+        interactive: false,
+        keyboard: false
+      }).addTo(map);
+      return marker;
+    });
 
     // Vẽ lại các điểm nghỉ của người này
     (stopMarkers[id] || []).forEach(function(m){ map.removeLayer(m); });
@@ -1054,6 +1103,8 @@ function drawTrails(trails){
       delete trailLines[id];
       (stopMarkers[id] || []).forEach(function(m){ map.removeLayer(m); });
       delete stopMarkers[id];
+      (dayLabelMarkers[id] || []).forEach(function(m){ map.removeLayer(m); });
+      delete dayLabelMarkers[id];
     }
   });
 }
