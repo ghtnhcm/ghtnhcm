@@ -87,6 +87,12 @@
   .route-line{
     filter: drop-shadow(0 0 1.4px #fff) drop-shadow(0 0 1.4px #fff) drop-shadow(0 0 1.4px #fff);
   }
+  /* Đường hành trình (trail) di chuyển của thành viên — tách riêng khỏi .route-line
+     (dùng cho ranh giới hành chính / đường phố / tuyến chỉ đường) để không bị lẫn:
+     viền phát sáng nhạt hơn + có thêm sắc ngoài để phân biệt trên nền vệ tinh. */
+  .trail-line{
+    filter: drop-shadow(0 0 1.6px #fff) drop-shadow(0 0 1.6px #fff) drop-shadow(0 0 2.5px rgba(0,0,0,.55));
+  }
   #footer-note{
     font-size:11px;
     color:var(--muted);
@@ -1064,7 +1070,7 @@ function drawTrails(trails){
         opacity: 0.85,
         dashArray: isMe ? null : '1 6',
         lineCap: 'round',
-        className: 'route-line'
+        className: 'trail-line'
       }).addTo(map);
     } else {
       trailLines[id].setLatLngs(latlngs);
