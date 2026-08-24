@@ -910,16 +910,21 @@ function dayLabelIcon(text, color){
     iconSize: null, iconAnchor: [10, 10]
   });
 }
+// Khoá ngày (theo giờ địa phương) dùng chung cho việc tách ngày, cả khi vẽ
+// nhãn ngày trên bản đồ lẫn khi tính thời gian di chuyển theo từng ngày.
+function dayKeyOf(t){
+  const d = new Date(t);
+  return d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate();
+}
 // Tách các điểm của 1 hành trình thành từng ngày (theo giờ địa phương): luôn có
 // nhãn ở điểm bắt đầu hành trình, rồi thêm 1 nhãn mỗi khi hành trình sang ngày mới.
 function computeDayBreaks(points){
   const breaks = [];
   let lastDayKey = null;
   points.forEach(function(p){
-    const d = new Date(p.t);
-    const dayKey = d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate();
+    const dayKey = dayKeyOf(p.t);
     if(dayKey !== lastDayKey){
-      breaks.push({ lat: p.lat, lng: p.lng, date: d });
+      breaks.push({ lat: p.lat, lng: p.lng, date: new Date(p.t) });
       lastDayKey = dayKey;
     }
   });
@@ -974,13 +979,31 @@ function formatDuration(ms){
   return m + ' phút';
 }
 
-// Tổng quãng đường (km) và tổng thời gian (từ điểm đầu đến điểm cuối) của một hành trình.
+// Tổng quãng đường (km) và tổng thời gian di chuyển của một hành trình.
+// Thời gian được TÁCH RIÊNG theo từng ngày rồi cộng lại (điểm đầu → điểm
+// cuối CỦA NGÀY ĐÓ), thay vì lấy điểm cuối trừ điểm đầu của toàn bộ hành
+// trình — cách cũ sẽ tính luôn cả khoảng nghỉ qua đêm giữa các ngày vào
+// "thời gian di chuyển", khiến con số bị thổi phồng sai lệch khi trail kéo
+// dài nhiều ngày (ví dụ hiện "36 giờ" cho hành trình 2 ngày, dù mỗi ngày chỉ
+// đi thực tế vài giờ).
 function computeTrailStats(points){
-  let distM = 0;
-  for(let i = 1; i < points.length; i++){ distM += haversineMeters(points[i - 1], points[i]); }
-  const startT = new Date(points[0].t);
-  const endT = new Date(points[points.length - 1].t);
-  return { distanceKm: distM / 1000, durationMs: endT - startT };
+  const days = [];
+  let i = 0;
+  while(i < points.length){
+    const dayStartIdx = i;
+    const key = dayKeyOf(points[i].t);
+    while(i < points.length && dayKeyOf(points[i].t) === key) i++;
+    const dayPoints = points.slice(dayStartIdx, i);
+    let dayDistM = 0;
+    for(let j = 1; j < dayPoints.length; j++){ dayDistM += haversineMeters(dayPoints[j - 1], dayPoints[j]); }
+    const dayDurationMs = dayPoints.length > 1
+      ? (new Date(dayPoints[dayPoints.length - 1].t) - new Date(dayPoints[0].t))
+      : 0;
+    days.push({ date: new Date(dayPoints[0].t), distanceKm: dayDistM / 1000, durationMs: dayDurationMs });
+  }
+  const distanceKm = days.reduce(function(s, d){ return s + d.distanceKm; }, 0);
+  const durationMs = days.reduce(function(s, d){ return s + d.durationMs; }, 0);
+  return { distanceKm: distanceKm, durationMs: durationMs, days: days };
 }
 
 // Điểm nghỉ = một cụm điểm liên tiếp mà người này gần như đứng yên (trong bán kính
@@ -1068,10 +1091,16 @@ function drawTrails(trails){
     const isMe = id === myId;
     const stats = computeTrailStats(trail.points);
     const stops = detectStops(trail.points);
+    const dayBreakdownHtml = stats.days.length > 1
+      ? '<br><br><i>Theo ngày:</i><br>' + stats.days.map(function(d){
+          return formatDayLabel(d.date) + ': ' + d.distanceKm.toFixed(2) + ' km, ' + formatDuration(d.durationMs);
+        }).join('<br>')
+      : '';
     const popupHtml = '<b>Hành trình: ' + (trail.name || 'Thành viên') + '</b><br>' +
-      'Quãng đường: ' + stats.distanceKm.toFixed(2) + ' km<br>' +
-      'Thời gian: ' + formatDuration(stats.durationMs) +
-      (stops.length ? '<br>Số điểm nghỉ: ' + stops.length : '');
+      (stats.days.length > 1 ? 'Tổng quãng đường: ' : 'Quãng đường: ') + stats.distanceKm.toFixed(2) + ' km<br>' +
+      (stats.days.length > 1 ? 'Tổng thời gian: ' : 'Thời gian: ') + formatDuration(stats.durationMs) +
+      (stops.length ? '<br>Số điểm nghỉ: ' + stops.length : '') +
+      dayBreakdownHtml;
 
     const trailColor = isMe ? '#e65100' : colorForId(trail.name || id);
     if(!trailLines[id]){
