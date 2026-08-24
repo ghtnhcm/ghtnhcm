@@ -1017,8 +1017,15 @@ const btnGroupShare = document.getElementById('btn-groupshare');
 const groupStatus = document.getElementById('group-status');
 
 function colorForId(id){
+  // Tô màu theo TÊN (nếu có) thay vì id thiết bị ngẫu nhiên — id được sinh
+  // lại mỗi khi ai đó đổi máy hoặc xoá dữ liệu trình duyệt (localStorage),
+  // nên cùng một người có thể có nhiều id khác nhau qua các ngày; nhưng họ
+  // thường gõ lại đúng tên mình, nên dùng tên làm khoá màu giúp 1 người luôn
+  // ra đúng 1 màu dù đổi thiết bị. Chuẩn hoá (trim + lowercase) để tránh
+  // lệch màu chỉ vì khác hoa/thường hay khoảng trắng thừa.
+  const key = (id || '').trim().toLowerCase();
   let hash = 0;
-  for(let i = 0; i < id.length; i++){ hash = (hash * 31 + id.charCodeAt(i)) >>> 0; }
+  for(let i = 0; i < key.length; i++){ hash = (hash * 31 + key.charCodeAt(i)) >>> 0; }
   // Né dải xanh dương (190°-250°) để không lẫn với màu ranh giới hành chính (#0d47a1);
   // ép hash rơi vào phần còn lại của vòng màu (250°-190°, tức 300° khả dụng).
   let hue = hash % 300;
@@ -1066,7 +1073,7 @@ function drawTrails(trails){
       'Thời gian: ' + formatDuration(stats.durationMs) +
       (stops.length ? '<br>Số điểm nghỉ: ' + stops.length : '');
 
-    const trailColor = isMe ? '#e65100' : colorForId(id);
+    const trailColor = isMe ? '#e65100' : colorForId(trail.name || id);
     if(!trailLines[id]){
       trailLines[id] = L.polyline(latlngs, {
         color: trailColor,
@@ -1131,7 +1138,7 @@ async function pollGroupLocations(){
       seenIds.add(row.id);
       const latlng = [row.lat, row.lng];
       if(!otherMarkers[row.id]){
-        const marker = L.circleMarker(latlng, {radius:8, color:'#fff', weight:3, fillColor: colorForId(row.id), fillOpacity:1}).addTo(map);
+        const marker = L.circleMarker(latlng, {radius:8, color:'#fff', weight:3, fillColor: colorForId(row.name || row.id), fillOpacity:1}).addTo(map);
         marker.bindTooltip(row.name || 'Thành viên', {permanent:true, direction:'top', offset:[0,-9], className:'group-member-label'});
         marker.bindPopup('<b>' + (row.name || 'Thành viên') + '</b>');
         otherMarkers[row.id] = marker;
