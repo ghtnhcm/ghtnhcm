@@ -1019,7 +1019,11 @@ const groupStatus = document.getElementById('group-status');
 function colorForId(id){
   let hash = 0;
   for(let i = 0; i < id.length; i++){ hash = (hash * 31 + id.charCodeAt(i)) >>> 0; }
-  return 'hsl(' + (hash % 360) + ', 70%, 42%)';
+  // Né dải xanh dương (190°-250°) để không lẫn với màu ranh giới hành chính (#0d47a1);
+  // ép hash rơi vào phần còn lại của vòng màu (250°-190°, tức 300° khả dụng).
+  let hue = hash % 300;
+  if(hue >= 190) hue += 60; // nhảy qua khoảng xanh dương cấm
+  return 'hsl(' + hue + ', 75%, 40%)';
 }
 
 function pushMyLocation(lat, lng, acc){
@@ -1062,7 +1066,7 @@ function drawTrails(trails){
       'Thời gian: ' + formatDuration(stats.durationMs) +
       (stops.length ? '<br>Số điểm nghỉ: ' + stops.length : '');
 
-    const trailColor = isMe ? '#2563eb' : colorForId(id);
+    const trailColor = isMe ? '#e65100' : colorForId(id);
     if(!trailLines[id]){
       trailLines[id] = L.polyline(latlngs, {
         color: trailColor,
