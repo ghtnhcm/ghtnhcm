@@ -16,12 +16,19 @@ const MAX_HISTORY_POINTS_PER_SESSION = 5000;
 // Safety cap on total trail points fetched across ALL participants in one
 // history request (single batched query — see onRequestGet below).
 const MAX_TOTAL_HISTORY_POINTS = 20000;
-// A person's trail stays visible to the group for this long after they go
-// offline (close the tab, lose signal, etc.) — the points were never
-// deleted from the database, this just controls how long the *API* keeps
-// surfacing a finished route so it doesn't vanish the moment someone
-// disconnects. Extend this if survey trips run longer than a day.
-const TRAIL_VISIBILITY_MS = 24 * 60 * 60 * 1000; // 24 giờ
+// How far back (in time) trail sessions are still pulled into the map, so
+// multi-day routes ("hành trình lưu 90 ngày") actually show up — not just
+// today's. The points were never deleted from the database before this (only
+// HISTORY_RETENTION_MS controls permanent deletion); this just controlled how
+// far back the *API* looked. Extend this if survey trips should stay visible
+// on the map for longer than a week.
+const TRAIL_VISIBILITY_MS = 7 * 24 * 60 * 60 * 1000; // 7 ngày
+// Each time someone turns location-sharing back on, a new sessionId starts —
+// so a multi-day trail is really several sessions per participant. This caps
+// how many of a person's most recent sessions we pull (roughly "how many
+// separate days/trips"), so one very active participant over many days can't
+// blow up the response.
+const MAX_SESSIONS_PER_PARTICIPANT = 30;
 
 
 export const onRequestPost = async ({ request, env }) => {
@@ -114,29 +121,38 @@ export const onRequestGet = async ({ request, env }) => {
   //      into one query, then filtered/grouped in JS → too much data to
   //      parse and walk in JS → exceeded the free plan's 10ms CPU budget
   //      (Cloudflare error 1102) once the group hit ~14 people.
-  // This version pushes the "only the current session per participant"
+  // This version pushes the "only the participant's N most recent sessions"
   // filtering into SQL itself (D1/SQLite query time doesn't count against
   // Worker CPU time — only parsing/looping in JS does), via two small raw
   // queries instead of drizzle's query builder, so only the points actually
   // needed ever reach the Worker's JS.
   const trailCutoffSec = Math.floor((Date.now() - TRAIL_VISIBILITY_MS) / 1000);
 
-  // Step 1: one row per participant — their most recent session. Small
-  // result set (one row per person, not per point).
+  // Step 1: each participant's most recent sessions (up to
+  // MAX_SESSIONS_PER_PARTICIPANT), one row per session — not just their
+  // single latest one. This is what lets multiple days of trail show up
+  // instead of only the most recent day. Still a small result set (one row
+  // per session, not per point) and still filtered entirely in SQL via a
+  // window function, so it doesn't reintroduce the per-participant query
+  // loop or the "pull everything into JS" problem noted above.
   const latestSessions = (
     await env.DB.prepare(
-      `SELECT lh.participant_id AS participantId, lh.session_id AS sessionId, lh.name AS name
-       FROM location_history lh
-       INNER JOIN (
-         SELECT participant_id, MAX(recorded_at) AS max_recorded_at
-         FROM location_history
-         WHERE recorded_at > ?
-         GROUP BY participant_id
-       ) latest
-         ON lh.participant_id = latest.participant_id
-        AND lh.recorded_at = latest.max_recorded_at`
+      `SELECT participantId, sessionId, name FROM (
+         SELECT lh.participant_id AS participantId,
+                lh.session_id AS sessionId,
+                lh.name AS name,
+                MAX(lh.recorded_at) AS max_recorded_at,
+                ROW_NUMBER() OVER (
+                  PARTITION BY lh.participant_id
+                  ORDER BY MAX(lh.recorded_at) DESC
+                ) AS rn
+         FROM location_history lh
+         WHERE lh.recorded_at > ?
+         GROUP BY lh.participant_id, lh.session_id
+       ) ranked
+       WHERE rn <= ?`
     )
-      .bind(trailCutoffSec)
+      .bind(trailCutoffSec, MAX_SESSIONS_PER_PARTICIPANT)
       .all()
   ).results ?? [];
 
@@ -147,8 +163,8 @@ export const onRequestGet = async ({ request, env }) => {
     const sessionIds = latestSessions.map((s) => s.sessionId);
     const participantBySession = new Map(latestSessions.map((s) => [s.sessionId, { id: s.participantId, name: s.name }]));
 
-    // Step 2: only the points belonging to those current sessions — not
-    // every point from the last 24h across every past session.
+    // Step 2: only the points belonging to those selected recent sessions —
+    // not every point from the whole lookback window across every session.
     const placeholders = sessionIds.map(() => "?").join(",");
     const points = (
       await env.DB.prepare(
