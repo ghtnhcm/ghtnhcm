@@ -128,71 +128,61 @@ export const onRequestGet = async ({ request, env }) => {
   // needed ever reach the Worker's JS.
   const trailCutoffSec = Math.floor((Date.now() - TRAIL_VISIBILITY_MS) / 1000);
 
-  // Step 1: each participant's most recent sessions (up to
-  // MAX_SESSIONS_PER_PARTICIPANT), one row per session — not just their
-  // single latest one. This is what lets multiple days of trail show up
-  // instead of only the most recent day. Still a small result set (one row
-  // per session, not per point) and still filtered entirely in SQL, so it
-  // doesn't reintroduce the per-participant query loop or the "pull
-  // everything into JS" problem noted above.
-  // (Deliberately avoids ROW_NUMBER()/window functions here — a CTE +
-  // correlated-subquery rank check instead, since it's the more broadly
-  // compatible SQLite syntax across D1 versions.)
-  const latestSessions = (
+  // Single query: rank each participant's sessions by recency (session_max +
+  // correlated-subquery rank, same as before — still avoids window functions
+  // for broad D1/SQLite compatibility) and JOIN straight back onto
+  // location_history to pull the points for the top-N sessions per
+  // participant, all in one round trip.
+  //
+  // IMPORTANT: this replaces an earlier two-query version that first fetched
+  // the qualifying sessionIds into JS and then re-queried with
+  // `WHERE session_id IN (?, ?, ?, ...)` — one bound parameter per sessionId.
+  // D1 caps prepared statements at ~100 bound parameters, so once enough
+  // participants had trails (a handful of people * MAX_SESSIONS_PER_PARTICIPANT),
+  // that IN(...) list alone blew past the limit and D1 threw on bind,
+  // surfacing as a 500. Joining in SQL instead means the bind list is fixed
+  // at 3 params no matter how many participants/sessions exist.
+  const points = (
     await env.DB.prepare(
       `WITH session_max AS (
-         SELECT lh.participant_id AS participantId,
-                lh.session_id AS sessionId,
-                lh.name AS name,
-                MAX(lh.recorded_at) AS max_recorded_at
-         FROM location_history lh
-         WHERE lh.recorded_at > ?
-         GROUP BY lh.participant_id, lh.session_id
+         SELECT participant_id AS participantId,
+                session_id AS sessionId,
+                name,
+                MAX(recorded_at) AS max_recorded_at
+         FROM location_history
+         WHERE recorded_at > ?
+         GROUP BY participant_id, session_id
+       ),
+       ranked_sessions AS (
+         SELECT sm.participantId, sm.sessionId, sm.name,
+           (SELECT COUNT(*) FROM session_max sm2
+            WHERE sm2.participantId = sm.participantId
+              AND sm2.max_recorded_at > sm.max_recorded_at) AS rnk
+         FROM session_max sm
        )
-       SELECT participantId, sessionId, name
-       FROM session_max sm
-       WHERE (
-         SELECT COUNT(*) FROM session_max sm2
-         WHERE sm2.participantId = sm.participantId
-           AND sm2.max_recorded_at > sm.max_recorded_at
-       ) < ?`
+       SELECT lh.participant_id AS participantId, rs.name AS name,
+              lh.lat AS lat, lh.lng AS lng, lh.recorded_at AS recordedAt
+       FROM location_history lh
+       JOIN ranked_sessions rs
+         ON rs.sessionId = lh.session_id AND rs.participantId = lh.participant_id
+       WHERE rs.rnk < ?
+       ORDER BY lh.recorded_at ASC
+       LIMIT ?`
     )
-      .bind(trailCutoffSec, MAX_SESSIONS_PER_PARTICIPANT)
+      .bind(trailCutoffSec, MAX_SESSIONS_PER_PARTICIPANT, MAX_TOTAL_HISTORY_POINTS)
       .all()
   ).results ?? [];
 
   const trails = {};
   for (const row of rows) trails[row.id] = { name: row.name, points: [] };
 
-  if (latestSessions.length > 0) {
-    const sessionIds = latestSessions.map((s) => s.sessionId);
-    const participantBySession = new Map(latestSessions.map((s) => [s.sessionId, { id: s.participantId, name: s.name }]));
-
-    // Step 2: only the points belonging to those selected recent sessions —
-    // not every point from the whole lookback window across every session.
-    const placeholders = sessionIds.map(() => "?").join(",");
-    const points = (
-      await env.DB.prepare(
-        `SELECT session_id AS sessionId, lat, lng, recorded_at AS recordedAt
-         FROM location_history
-         WHERE session_id IN (${placeholders})
-         ORDER BY recorded_at ASC
-         LIMIT ?`
-      )
-        .bind(...sessionIds, MAX_TOTAL_HISTORY_POINTS)
-        .all()
-    ).results ?? [];
-
-    for (const p of points) {
-      const participant = participantBySession.get(p.sessionId);
-      if (!participant) continue;
-      if (!trails[participant.id]) trails[participant.id] = { name: participant.name, points: [] };
-      trails[participant.id].points.push({
-        lat: p.lat,
-        lng: p.lng,
-        t: new Date(p.recordedAt * 1000).toISOString(),
-      });
-    }
+  for (const p of points) {
+    if (!trails[p.participantId]) trails[p.participantId] = { name: p.name, points: [] };
+    trails[p.participantId].points.push({
+      lat: p.lat,
+      lng: p.lng,
+      t: new Date(p.recordedAt * 1000).toISOString(),
+    });
   }
 
   return Response.json({ locations: rows, trails });
