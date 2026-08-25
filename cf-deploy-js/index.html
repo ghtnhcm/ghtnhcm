@@ -288,7 +288,13 @@
       <span class="swatch" style="background:#2f5d5055;border-color:#2f5d50;"></span>
       <span class="layer-label">Lớp mưa (radar thời gian thực)</span>
     </div>
-    <div class="legend-note">Thời tiết hiện tại lấy theo khu vực trung tâm bản đồ đang xem — di chuyển/phóng bản đồ sẽ tự cập nhật. Nguồn: Open-Meteo &amp; RainViewer (miễn phí, không cần API key).</div>
+    <div id="rain-radar-legend" style="display:none;margin:4px 0 2px;">
+      <div style="height:10px;border-radius:5px;background:linear-gradient(to right,#63d3ff 0%,#2f86eb 30%,#1c4fd6 55%,#8f2ecf 75%,#e0225a 100%);border:1px solid var(--line);"></div>
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:2px;">
+        <span>Mưa nhỏ</span><span>Mưa vừa</span><span>Mưa to / dông</span>
+      </div>
+    </div>
+    <div class="legend-note">Thời tiết hiện tại lấy theo khu vực trung tâm bản đồ đang xem — di chuyển/phóng bản đồ sẽ tự cập nhật. Nguồn: Open-Meteo &amp; RainViewer (miễn phí, không cần API key). Không thấy mảng màu nào trên bản đồ nghĩa là khu vực đó hiện không mưa.</div>
 
     <div class="section-title">Khảo sát &amp; tuyển dụng thực tế</div>
     <button id="btn-locate" class="field-btn">📍 Bật định vị / theo dõi vị trí</button>
@@ -547,9 +553,12 @@ const baseMaps = {
   "🛰️ Vệ tinh + tên đường": layerSatelliteLabels,
   "⬜ Bản đồ đơn giản": layerSimple
 };
-// VietMap là nền mặc định khi mở ứng dụng; nếu key placeholder thì tileerror ở trên
-// sẽ tự chuyển sang OSM.
-layerVietMap.addTo(map);
+// OpenStreetMap là nền mặc định khi mở ứng dụng — không giới hạn zoom, luôn ổn định.
+// VietMap vẫn có trong menu chọn nền (góc phải bản đồ) để dùng khi cần, nhưng KHÔNG đặt
+// làm mặc định nữa vì API key hiện tại có thể trả về tile "Zoom Level Not Supported" ở
+// một số mức zoom — đây là ảnh hợp lệ (không phải lỗi mạng) nên cơ chế tự chuyển layer
+// khi gặp lỗi (tileerror) phía trên không phát hiện được trường hợp này.
+layerStreetDetailed.addTo(map);
 L.control.layers(baseMaps, null, {position:'topright', collapsed:true}).addTo(map);
 // Thước tỉ lệ — hữu ích khi xem trên bản đồ và bắt buộc khi in ra giấy để đo khoảng cách thực tế
 L.control.scale({metric:true, imperial:false, position:'bottomleft'}).addTo(map);
@@ -578,10 +587,10 @@ function fetchRainViewerAndShow(){
   }).catch(function(){});
 }
 
-function toggleRainRadar(row){
-  const chk = row.querySelector('input[type=checkbox]');
-  chk.checked = !chk.checked;
-  if(chk.checked){
+function applyRainRadar(checked){
+  const legendEl = document.getElementById('rain-radar-legend');
+  if(legendEl) legendEl.style.display = checked ? 'block' : 'none';
+  if(checked){
     if(rainRadarLayer){ rainRadarLayer.addTo(map); }
     fetchRainViewerAndShow();
     if(rainRadarTimer) clearInterval(rainRadarTimer);
@@ -591,6 +600,19 @@ function toggleRainRadar(row){
     if(rainRadarTimer){ clearInterval(rainRadarTimer); rainRadarTimer = null; }
   }
 }
+
+function toggleRainRadar(row){
+  const chk = row.querySelector('input[type=checkbox]');
+  chk.checked = !chk.checked;
+  applyRainRadar(chk.checked);
+}
+
+// Bấm trực tiếp vào ô checkbox (thay vì vùng chữ) sẽ không đi qua onclick của
+// cả dòng (do event.stopPropagation() trên input) — nên cần lắng nghe riêng
+// sự kiện 'change' của chính checkbox để không bị "tick nhưng không tải lớp mưa".
+rainRadarChk.addEventListener('change', function(){
+  applyRainRadar(rainRadarChk.checked);
+});
 
 const WEATHER_CODE_MAP = {
   0:{icon:'☀️',label:'Trời quang, nắng'}, 1:{icon:'🌤️',label:'Ít mây'},
