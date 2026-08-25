@@ -256,6 +256,14 @@
   #weather-widget .weather-sub{color:var(--muted);font-size:11.5px;}
   #weather-widget .weather-updated{color:var(--muted);font-size:10.5px;margin-top:4px;}
 
+  /* Khi lớp mưa đang bật: làm nổi bật mọi đường ranh giới (huyện Củ Chi, các KV, ranh giới
+     bổ sung TDM/Long An...) bằng viền sáng, để nhìn rõ ranh giới nào đang bị mảng màu mưa
+     đè lên, bất kể màu mưa đậm nhạt ra sao. Áp dụng chung cho class 'route-line' mà hầu hết
+     các lớp ranh giới/polygon trong app đều dùng. */
+  .map-rain-active .route-line{
+    filter: drop-shadow(0 0 1.5px #fff) drop-shadow(0 0 1.5px #fff) drop-shadow(0 0 2.5px rgba(0,0,0,.35));
+  }
+
   @media (max-width:760px){
     #app{flex-direction:column;}
     #sidebar{width:100%;max-width:none;height:30vh;border-right:none;border-bottom:1px solid var(--line);}
@@ -597,6 +605,9 @@ function fetchRainViewerAndShow(){
 function applyRainRadar(checked){
   const legendEl = document.getElementById('rain-radar-legend');
   if(legendEl) legendEl.style.display = checked ? 'block' : 'none';
+  // Bật/tắt viền sáng cho tất cả đường ranh giới trên bản đồ khi bật/tắt lớp mưa,
+  // để dễ nhận biết ranh giới nào đang nằm trong vùng có mưa.
+  map.getContainer().classList.toggle('map-rain-active', checked);
   if(checked){
     if(rainRadarLayer){ rainRadarLayer.addTo(map); }
     fetchRainViewerAndShow();
