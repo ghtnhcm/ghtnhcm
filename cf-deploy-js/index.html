@@ -247,6 +247,15 @@
   }
   #btn-toggle-sidebar:hover{background:#f1efe6;}
 
+  #weather-widget{
+    background:#faf8f2;border:1px solid var(--line);border-radius:8px;
+    padding:10px 12px;font-size:13px;margin-bottom:8px;line-height:1.5;
+  }
+  #weather-widget .weather-icon{font-size:28px;line-height:1;}
+  #weather-widget .weather-temp{font-size:16px;color:var(--ink);}
+  #weather-widget .weather-sub{color:var(--muted);font-size:11.5px;}
+  #weather-widget .weather-updated{color:var(--muted);font-size:10.5px;margin-top:4px;}
+
   @media (max-width:760px){
     #app{flex-direction:column;}
     #sidebar{width:100%;max-width:none;height:30vh;border-right:none;border-bottom:1px solid var(--line);}
@@ -271,6 +280,15 @@
     <div id="stats"></div>
     <div class="legend-note">Bấm vào 1 khu vực trên bản đồ để xem tên KV. Bỏ tick 1 mục để ẩn lớp đó khỏi bản đồ.</div>
     <div class="legend-note" style="margin-top:6px;">💡 Ở góc phải bản đồ có nút <b>🗺️ chọn loại nền bản đồ</b> (bấm để mở/đóng): "Đường phố chi tiết" sẽ hiện <b>số nhà</b> khi phóng to (zoom) sâu vào từng con hẻm/tuyến đường; "Vệ tinh" để đối chiếu thực địa.</div>
+
+    <div class="section-title">🌦️ Thời tiết</div>
+    <div id="weather-widget">Đang tải thời tiết...</div>
+    <div class="layer-row" onclick="toggleRainRadar(this)">
+      <input type="checkbox" id="chk-rain-radar" onclick="event.stopPropagation()">
+      <span class="swatch" style="background:#2f5d5055;border-color:#2f5d50;"></span>
+      <span class="layer-label">Lớp mưa (radar thời gian thực)</span>
+    </div>
+    <div class="legend-note">Thời tiết hiện tại lấy theo khu vực trung tâm bản đồ đang xem — di chuyển/phóng bản đồ sẽ tự cập nhật. Nguồn: Open-Meteo &amp; RainViewer (miễn phí, không cần API key).</div>
 
     <div class="section-title">Khảo sát &amp; tuyển dụng thực tế</div>
     <button id="btn-locate" class="field-btn">📍 Bật định vị / theo dõi vị trí</button>
@@ -535,6 +553,88 @@ layerVietMap.addTo(map);
 L.control.layers(baseMaps, null, {position:'topright', collapsed:true}).addTo(map);
 // Thước tỉ lệ — hữu ích khi xem trên bản đồ và bắt buộc khi in ra giấy để đo khoảng cách thực tế
 L.control.scale({metric:true, imperial:false, position:'bottomleft'}).addTo(map);
+
+// ---------- Thời tiết: lớp radar mưa (RainViewer) + thời tiết hiện tại (Open-Meteo) ----------
+// Cả hai dịch vụ đều miễn phí, không cần API key — cùng triết lý với các lớp OSM khác trong app.
+let rainRadarLayer = null;
+let rainRadarTimer = null;
+const weatherWidgetEl = document.getElementById('weather-widget');
+const rainRadarChk = document.getElementById('chk-rain-radar');
+
+function fetchRainViewerAndShow(){
+  fetch('https://api.rainviewer.com/public/weather-maps.json').then(function(r){ return r.json(); }).then(function(data){
+    if(!data || !data.radar || !data.radar.past || !data.radar.past.length) return;
+    const frames = data.radar.past.concat(data.radar.nowcast || []);
+    const latest = frames[frames.length - 1];
+    const host = data.host || 'https://tilecache.rainviewer.com';
+    const url = host + latest.path + '/256/{z}/{x}/{y}/2/1_1.png';
+    if(rainRadarLayer){ map.removeLayer(rainRadarLayer); }
+    rainRadarLayer = L.tileLayer(url, {
+      opacity: 0.55,
+      zIndex: 450,
+      attribution: 'Radar mưa: <a href="https://www.rainviewer.com/" target="_blank">RainViewer</a>'
+    });
+    if(rainRadarChk.checked){ rainRadarLayer.addTo(map); }
+  }).catch(function(){});
+}
+
+function toggleRainRadar(row){
+  const chk = row.querySelector('input[type=checkbox]');
+  chk.checked = !chk.checked;
+  if(chk.checked){
+    if(rainRadarLayer){ rainRadarLayer.addTo(map); }
+    fetchRainViewerAndShow();
+    if(rainRadarTimer) clearInterval(rainRadarTimer);
+    rainRadarTimer = setInterval(fetchRainViewerAndShow, 5*60*1000);
+  } else {
+    if(rainRadarLayer) map.removeLayer(rainRadarLayer);
+    if(rainRadarTimer){ clearInterval(rainRadarTimer); rainRadarTimer = null; }
+  }
+}
+
+const WEATHER_CODE_MAP = {
+  0:{icon:'☀️',label:'Trời quang, nắng'}, 1:{icon:'🌤️',label:'Ít mây'},
+  2:{icon:'⛅',label:'Mây rải rác'}, 3:{icon:'☁️',label:'Nhiều mây, âm u'},
+  45:{icon:'🌫️',label:'Sương mù'}, 48:{icon:'🌫️',label:'Sương mù đóng băng'},
+  51:{icon:'🌦️',label:'Mưa phùn nhẹ'}, 53:{icon:'🌦️',label:'Mưa phùn'}, 55:{icon:'🌧️',label:'Mưa phùn dày'},
+  56:{icon:'🌧️',label:'Mưa phùn đóng băng'}, 57:{icon:'🌧️',label:'Mưa phùn đóng băng dày'},
+  61:{icon:'🌧️',label:'Mưa nhỏ'}, 63:{icon:'🌧️',label:'Mưa vừa'}, 65:{icon:'🌧️',label:'Mưa to'},
+  66:{icon:'🌧️',label:'Mưa đóng băng nhẹ'}, 67:{icon:'🌧️',label:'Mưa đóng băng to'},
+  71:{icon:'🌨️',label:'Tuyết nhẹ'}, 73:{icon:'🌨️',label:'Tuyết vừa'}, 75:{icon:'🌨️',label:'Tuyết to'},
+  80:{icon:'🌧️',label:'Mưa rào nhẹ'}, 81:{icon:'🌧️',label:'Mưa rào vừa'}, 82:{icon:'⛈️',label:'Mưa rào rất to'},
+  95:{icon:'⛈️',label:'Dông'}, 96:{icon:'⛈️',label:'Dông kèm mưa đá nhẹ'}, 99:{icon:'⛈️',label:'Dông kèm mưa đá to'}
+};
+
+let weatherFetchTimer = null;
+function fetchCurrentWeather(){
+  const c = map.getCenter();
+  const url = 'https://api.open-meteo.com/v1/forecast?latitude=' + c.lat.toFixed(3) + '&longitude=' + c.lng.toFixed(3) +
+    '&current=temperature_2m,precipitation,weather_code,wind_speed_10m&timezone=Asia%2FHo_Chi_Minh';
+  fetch(url).then(function(r){ return r.json(); }).then(function(data){
+    if(!data || !data.current){ weatherWidgetEl.innerHTML = 'Không lấy được dữ liệu thời tiết.'; return; }
+    const cur = data.current;
+    const info = WEATHER_CODE_MAP[cur.weather_code] || {icon:'🌡️', label:'Không rõ'};
+    const updated = new Date(cur.time).toLocaleTimeString('vi-VN', {hour:'2-digit', minute:'2-digit'});
+    weatherWidgetEl.innerHTML =
+      '<div style="display:flex;align-items:center;gap:10px;">' +
+        '<div class="weather-icon">' + info.icon + '</div>' +
+        '<div>' +
+          '<b class="weather-temp">' + Math.round(cur.temperature_2m) + '°C</b> — ' + info.label + '<br>' +
+          '<span class="weather-sub">Mưa: ' + cur.precipitation + 'mm · Gió: ' + Math.round(cur.wind_speed_10m) + 'km/h</span>' +
+        '</div>' +
+      '</div>' +
+      '<div class="weather-updated">Cập nhật ' + updated + ' — theo khu vực đang xem trên bản đồ</div>';
+  }).catch(function(){
+    weatherWidgetEl.innerHTML = 'Lỗi kết nối dịch vụ thời tiết.';
+  });
+}
+
+fetchCurrentWeather();
+map.on('moveend', function(){
+  if(weatherFetchTimer) clearTimeout(weatherFetchTimer);
+  weatherFetchTimer = setTimeout(fetchCurrentWeather, 1200);
+});
+setInterval(fetchCurrentWeather, 15*60*1000);
 
 const layerGroups = {};
 
