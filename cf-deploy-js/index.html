@@ -581,6 +581,13 @@ function fetchRainViewerAndShow(){
     rainRadarLayer = L.tileLayer(url, {
       opacity: 0.55,
       zIndex: 450,
+      maxNativeZoom: 7, // RainViewer chỉ có ảnh radar tới zoom 7 (theo tài liệu API chính thức);
+                        // để trống thì Leaflet sẽ đòi ảnh ở zoom sâu hơn (như z15, z16 khi xem
+                        // từng con đường) và RainViewer trả về ảnh báo lỗi "Zoom Level Not
+                        // Supported" thay vì tile mưa. Đặt maxNativeZoom=7 để Leaflet tự phóng to
+                        // (upscale) ảnh zoom-7 cuối cùng khi người dùng zoom sâu hơn, thay vì gọi
+                        // sai zoom.
+      maxZoom: 19,
       attribution: 'Radar mưa: <a href="https://www.rainviewer.com/" target="_blank">RainViewer</a>'
     });
     if(rainRadarChk.checked){ rainRadarLayer.addTo(map); }
