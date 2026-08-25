@@ -586,6 +586,26 @@ function addPointLayer(key, features, color, radius){
   if(el) el.textContent = count ? ('(' + count + ')') : '';
 }
 
+// Icon "ngôi nhà" dùng riêng cho các điểm CỬA HÀNG (store) — để phân biệt trực quan
+// với các điểm/vùng KHU VỰC (area), vốn vẫn giữ nguyên kiểu chấm tròn (circleMarker)
+// hoặc vùng tô màu (polygon/polyline) như trước.
+function makeStoreHouseIcon(color, size){
+  const s = size || 26;
+  const html =
+    '<svg width="' + s + '" height="' + s + '" viewBox="0 0 24 24" ' +
+    'style="filter:drop-shadow(0 1px 2px rgba(0,0,0,0.45));">' +
+    '<path d="M12 2.2 L1.5 11.2 H4.3 V21.5 H9.6 V14.3 H14.4 V21.5 H19.7 V11.2 H22.5 Z" ' +
+    'fill="' + color + '" stroke="#ffffff" stroke-width="1.6" stroke-linejoin="round"/>' +
+    '</svg>';
+  return L.divIcon({
+    className: 'store-house-icon',
+    html: html,
+    iconSize: [s, s],
+    iconAnchor: [s/2, s - 2],
+    popupAnchor: [0, -(s - 4)]
+  });
+}
+
 if(DATA.hcm){
   // All zone label points citywide
   addPointLayer('diemkv', DATA.hcm['Điểm KV'], '#444444', 3.5);
@@ -722,7 +742,8 @@ if(DATA.hcm){
         lyr.addTo(group);
       } else if(feat.geometry.type === 'Point'){
         const c = feat.geometry.coordinates;
-        const marker = L.circleMarker([c[1], c[0]], {radius:5, color:'#ffffff', weight:1.5, fillColor:color, fillOpacity:0.95});
+        // Điểm CỬA HÀNG (store) -> icon ngôi nhà; KHU VỰC vẫn là LineString ở trên, giữ nguyên.
+        const marker = L.marker([c[1], c[0]], {icon: makeStoreHouseIcon(color)});
         if(label){
           marker.bindTooltip(label, {sticky:true, direction:'top', opacity:0.95});
           marker.bindPopup('<b>' + label + '</b>');
@@ -2271,9 +2292,8 @@ document.getElementById('btn-admin-wipe-leads').addEventListener('click', async 
           count++;
         } else if(feat.geometry.type === 'Point'){
           const c = feat.geometry.coordinates;
-          const marker = L.circleMarker([c[1], c[0]], {
-            radius: 5, color:'#ffffff', weight:1.5, fillColor: color, fillOpacity:0.95
-          });
+          // Điểm CỬA HÀNG/chi nhánh -> icon ngôi nhà; các vùng KHU VỰC (Polygon) ở trên giữ nguyên.
+          const marker = L.marker([c[1], c[0]], {icon: makeStoreHouseIcon(color)});
           marker.bindTooltip(tooltipHtml, {sticky:true, direction:'top', opacity:0.95});
           marker.bindPopup(tooltipHtml);
           marker.addTo(group);
