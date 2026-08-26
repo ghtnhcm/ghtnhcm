@@ -303,6 +303,7 @@
       </div>
     </div>
     <div class="legend-note">Thời tiết hiện tại lấy theo khu vực trung tâm bản đồ đang xem — di chuyển/phóng bản đồ sẽ tự cập nhật. Nguồn: Open-Meteo &amp; RainViewer (miễn phí, không cần API key). Không thấy mảng màu nào trên bản đồ nghĩa là khu vực đó hiện không mưa.</div>
+    <div class="legend-note">💡 Nghi ngờ mảng màu trên lớp mưa là nhiễu (hay gặp ven sông/biển)? <b>Bấm chuột phải</b> (hoặc giữ tay trên điện thoại) vào đúng điểm đó trên bản đồ để xem số liệu mưa thực tế, không qua radar.</div>
 
     <div class="section-title">Khảo sát &amp; tuyển dụng thực tế</div>
     <button id="btn-locate" class="field-btn">📍 Bật định vị / theo dõi vị trí</button>
@@ -675,6 +676,47 @@ map.on('moveend', function(){
   weatherFetchTimer = setTimeout(fetchCurrentWeather, 1200);
 });
 setInterval(fetchCurrentWeather, 15*60*1000);
+
+// ---------- Kiểm tra mưa thực tế tại 1 điểm bất kỳ (chuột phải / giữ tay) ----------
+// Khác với lớp radar (ảnh trực quan, có thể bị nhiễu clutter ven sông/biển), số liệu này
+// lấy trực tiếp từ mô hình thời tiết Open-Meteo tại đúng toạ độ được chọn — không qua ảnh
+// radar nên không bị nhiễu, dùng để đối chiếu khi nghi ngờ mảng màu trên lớp mưa là giả.
+map.on('contextmenu', function(e){
+  if(e.originalEvent && e.originalEvent.preventDefault) e.originalEvent.preventDefault();
+  const latlng = e.latlng;
+  const popup = L.popup({closeButton:true})
+    .setLatLng(latlng)
+    .setContent('<div style="font-size:13px;">Đang kiểm tra mưa tại điểm này…</div>')
+    .openOn(map);
+  const url = 'https://api.open-meteo.com/v1/forecast?latitude=' + latlng.lat.toFixed(4) +
+    '&longitude=' + latlng.lng.toFixed(4) +
+    '&current=temperature_2m,precipitation,weather_code,wind_speed_10m&timezone=Asia%2FHo_Chi_Minh';
+  fetch(url).then(function(r){ return r.json(); }).then(function(data){
+    if(!data || !data.current){
+      popup.setContent('<div style="font-size:13px;">Không lấy được dữ liệu cho điểm này.</div>');
+      return;
+    }
+    const cur = data.current;
+    const info = WEATHER_CODE_MAP[cur.weather_code] || {icon:'🌡️', label:'Không rõ'};
+    const updated = new Date(cur.time).toLocaleTimeString('vi-VN', {hour:'2-digit', minute:'2-digit'});
+    const rainNote = cur.precipitation > 0
+      ? '<b style="color:#1c4fd6;">Đang có mưa thực tế</b>'
+      : '<span style="color:var(--muted);">Không có mưa (dù lớp radar có thể vẫn hiện màu — khả năng cao là nhiễu)</span>';
+    popup.setContent(
+      '<div style="font-size:13px;min-width:180px;">' +
+        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">' +
+          '<span style="font-size:22px;">' + info.icon + '</span>' +
+          '<b>' + Math.round(cur.temperature_2m) + '°C</b> — ' + info.label +
+        '</div>' +
+        '<div>Lượng mưa: <b>' + cur.precipitation + ' mm</b></div>' +
+        '<div>' + rainNote + '</div>' +
+        '<div style="color:var(--muted);font-size:10.5px;margin-top:4px;">Cập nhật ' + updated + ' — Open-Meteo (không qua radar)</div>' +
+      '</div>'
+    );
+  }).catch(function(){
+    popup.setContent('<div style="font-size:13px;">Lỗi kết nối dịch vụ thời tiết.</div>');
+  });
+});
 
 const layerGroups = {};
 
