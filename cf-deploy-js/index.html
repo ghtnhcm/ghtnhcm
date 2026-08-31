@@ -1098,6 +1098,53 @@ const trailLines = {}; // id -> Leaflet polyline (hành trình di chuyển của
 const stopMarkers = {}; // id -> mảng Leaflet marker các điểm nghỉ
 const dayLabelMarkers = {}; // id -> mảng Leaflet marker ghi chú ngày trên hành trình
 
+// Lọc hiển thị theo người được tích chọn trong danh sách "Xóa dữ liệu (Admin)".
+// Không tích ô nào => hiện TẤT CẢ mọi người (hành vi mặc định như trước).
+// Tích 1 hoặc nhiều ô => bản đồ CHỈ hiện marker + hành trình của (những) người đã tích.
+let lastGroupData = null; // cache kết quả poll gần nhất để lọc lại ngay khi tích/bỏ tích, không cần chờ vòng poll kế tiếp
+function getAdminFilterIds(){
+  const checked = Array.from(document.querySelectorAll('.admin-pid:checked'));
+  if(!checked.length) return null; // null = không lọc, hiện hết
+  const ids = new Set();
+  checked.forEach(function(el){ el.value.split(',').forEach(function(id){ ids.add(id); }); });
+  return ids;
+}
+function renderGroupData(){
+  if(!lastGroupData) return;
+  const filterIds = getAdminFilterIds();
+  const rows = lastGroupData.locations || [];
+  const seenIds = new Set();
+  rows.forEach(function(row){
+    if(row.id === myId) return; // vị trí của mình đã có marker riêng (userMarker)
+    if(filterIds && !filterIds.has(row.id)) return; // bị lọc bỏ (chưa tích chọn)
+    seenIds.add(row.id);
+    const latlng = [row.lat, row.lng];
+    if(!otherMarkers[row.id]){
+      const marker = L.circleMarker(latlng, {radius:8, color:'#fff', weight:3, fillColor: colorForId(row.name || row.id), fillOpacity:1}).addTo(map);
+      marker.bindTooltip(row.name || 'Thành viên', {permanent:true, direction:'top', offset:[0,-9], className:'group-member-label'});
+      marker.bindPopup('<b>' + (row.name || 'Thành viên') + '</b>');
+      otherMarkers[row.id] = marker;
+    } else {
+      otherMarkers[row.id].setLatLng(latlng);
+    }
+  });
+  Object.keys(otherMarkers).forEach(function(id){
+    if(!seenIds.has(id)){
+      map.removeLayer(otherMarkers[id]);
+      delete otherMarkers[id];
+    }
+  });
+  const trails = lastGroupData.trails || {};
+  const filteredTrails = filterIds
+    ? Object.keys(trails).reduce(function(acc, id){ if(filterIds.has(id)) acc[id] = trails[id]; return acc; }, {})
+    : trails;
+  drawTrails(filteredTrails);
+  const total = seenIds.size + 1; // +1 = chính mình
+  groupStatus.textContent = total <= 1
+    ? 'Đang chia sẻ — chưa có ai khác trong nhóm bật cùng lúc. Hành trình của bạn đang được ghi lại trên bản đồ.'
+    : 'Đang chia sẻ — ' + total + ' người đang online trong nhóm. Hành trình của từng người được vẽ trên bản đồ.';
+}
+
 // Style + hàm tạo nhãn ngày (đặt gần đầu mỗi ngày trên đường hành trình)
 function formatDayLabel(dateObj){
   const dd = String(dateObj.getDate()).padStart(2, '0');
@@ -1363,32 +1410,8 @@ async function pollGroupLocations(){
     const res = await fetch(GROUP_API + '?history=1');
     if(!res.ok) return;
     const data = await res.json();
-    const rows = data.locations || [];
-    const seenIds = new Set();
-    rows.forEach(function(row){
-      if(row.id === myId) return; // vị trí của mình đã có marker riêng (userMarker)
-      seenIds.add(row.id);
-      const latlng = [row.lat, row.lng];
-      if(!otherMarkers[row.id]){
-        const marker = L.circleMarker(latlng, {radius:8, color:'#fff', weight:3, fillColor: colorForId(row.name || row.id), fillOpacity:1}).addTo(map);
-        marker.bindTooltip(row.name || 'Thành viên', {permanent:true, direction:'top', offset:[0,-9], className:'group-member-label'});
-        marker.bindPopup('<b>' + (row.name || 'Thành viên') + '</b>');
-        otherMarkers[row.id] = marker;
-      } else {
-        otherMarkers[row.id].setLatLng(latlng);
-      }
-    });
-    Object.keys(otherMarkers).forEach(function(id){
-      if(!seenIds.has(id)){
-        map.removeLayer(otherMarkers[id]);
-        delete otherMarkers[id];
-      }
-    });
-    drawTrails(data.trails);
-    const total = seenIds.size + 1; // +1 = chính mình
-    groupStatus.textContent = total <= 1
-      ? 'Đang chia sẻ — chưa có ai khác trong nhóm bật cùng lúc. Hành trình của bạn đang được ghi lại trên bản đồ.'
-      : 'Đang chia sẻ — ' + total + ' người đang online trong nhóm. Hành trình của từng người được vẽ trên bản đồ.';
+    lastGroupData = data;
+    renderGroupData();
   }catch(e){
     // lỗi mạng tạm thời khi poll, giữ nguyên trạng thái marker hiện có
   }
@@ -1483,6 +1506,13 @@ btnAdminRefresh.addEventListener('click', async function(){
 // thiết bị đã gộp chung 1 dòng). Cập nhật cả tên hiện tại lẫn tên trên các
 // điểm trail cũ đã lưu, nên nhãn cũ trên bản đồ cũng đổi theo. Dùng chung
 // mật khẩu quản trị với chức năng xoá.
+// Tích/bỏ tích một người trong danh sách này => lọc ngay hiển thị trên bản đồ
+// (chỉ hiện marker + hành trình của (những) người đã tích; không tích ai thì hiện hết).
+adminParticipantListEl.addEventListener('change', function(e){
+  if(!e.target.classList.contains('admin-pid')) return;
+  renderGroupData();
+});
+
 adminParticipantListEl.addEventListener('click', async function(e){
   const btn = e.target.closest('.admin-rename-btn');
   if(!btn) return;
