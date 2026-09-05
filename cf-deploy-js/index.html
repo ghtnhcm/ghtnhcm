@@ -1071,6 +1071,10 @@ map.on('dragstart', function(){ following = false; });
 // ---------- Group live-location sharing (server-backed, via Netlify Function + Postgres) ----------
 const GROUP_API = '/api/locations';
 const GROUP_POLL_MS = 4000;
+// Hành trình (trail) đổi chậm hơn nhiều so với vị trí sống, và truy vấn lịch
+// sử tốn lượt đọc D1 hơn nhiều (phải quét cả location_history) — nên tải lại
+// thưa hơn hẳn vị trí sống để tránh hết hạn mức miễn phí của D1.
+const GROUP_TRAIL_POLL_MS = 30000;
 const GROUP_PUSH_MIN_INTERVAL_MS = 4000;
 
 let myId = localStorage.getItem('khaosat-my-id');
@@ -1086,6 +1090,7 @@ function newSessionId(){
 
 let groupSharing = false;
 let groupPollTimer = null;
+let groupTrailPollTimer = null;
 let lastPushAt = 0;
 // Phiên chia sẻ (sessionId) được lưu vào localStorage, không chỉ giữ trong biến JS.
 // Nếu trang bị tải lại giữa chừng (mất mạng, điện thoại làm mới trang nền, v.v.)
@@ -1207,6 +1212,10 @@ document.addEventListener('visibilitychange', function(){
     if(!groupPollTimer){
       groupPollTimer = setInterval(pollGroupLocations, GROUP_POLL_MS);
       pollGroupLocations();
+    }
+    if(!groupTrailPollTimer){
+      groupTrailPollTimer = setInterval(pollGroupTrails, GROUP_TRAIL_POLL_MS);
+      pollGroupTrails();
     }
   }
 });
@@ -1407,13 +1416,28 @@ function drawTrails(trails){
 
 async function pollGroupLocations(){
   try{
-    const res = await fetch(GROUP_API + '?history=1');
+    // KHÔNG kèm ?history=1 ở đây — truy vấn vị trí sống chỉ đọc bảng
+    // live_locations (nhỏ, rẻ). Lịch sử/hành trình được tải riêng, thưa hơn
+    // nhiều, ở pollGroupTrails() bên dưới, để đỡ tốn lượt đọc D1.
+    const res = await fetch(GROUP_API);
     if(!res.ok) return;
-    const data = await res.json();
-    lastGroupData = data;
+    const rows = await res.json();
+    lastGroupData = Object.assign({}, lastGroupData, { locations: rows });
     renderGroupData();
   }catch(e){
     // lỗi mạng tạm thời khi poll, giữ nguyên trạng thái marker hiện có
+  }
+}
+
+async function pollGroupTrails(){
+  try{
+    const res = await fetch(GROUP_API + '?history=1');
+    if(!res.ok) return;
+    const data = await res.json();
+    lastGroupData = Object.assign({}, lastGroupData, { locations: data.locations, trails: data.trails });
+    renderGroupData();
+  }catch(e){
+    // lỗi mạng tạm thời khi poll, giữ nguyên trạng thái hành trình hiện có
   }
 }
 
@@ -1427,6 +1451,7 @@ function stopGroupSharing(){
   btnGroupShare.textContent = '👥 Chia sẻ vị trí với nhóm';
   groupStatus.textContent = '';
   if(groupPollTimer){ clearInterval(groupPollTimer); groupPollTimer = null; }
+  if(groupTrailPollTimer){ clearInterval(groupTrailPollTimer); groupTrailPollTimer = null; }
   clearOtherMarkers();
   clearTrailLines();
   Object.keys(stopMarkers).forEach(function(id){ (stopMarkers[id] || []).forEach(function(m){ map.removeLayer(m); }); });
@@ -1445,7 +1470,9 @@ function startGroupSharing(keepSessionId){
   groupStatus.textContent = 'Đang kết nối...';
   if(watchId === null){ btnLocate.click(); } // dùng chung nguồn GPS với định vị cá nhân
   pollGroupLocations();
+  pollGroupTrails();
   groupPollTimer = setInterval(pollGroupLocations, GROUP_POLL_MS);
+  groupTrailPollTimer = setInterval(pollGroupTrails, GROUP_TRAIL_POLL_MS);
 }
 
 // Xóa dữ liệu (Admin) — có thể chọn riêng từng người và/hoặc giới hạn theo
