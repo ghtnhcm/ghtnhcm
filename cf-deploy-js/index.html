@@ -2636,7 +2636,24 @@ document.getElementById('btn-admin-wipe-leads').addEventListener('click', async 
     const c = row.c || [];
     const cell = c[index];
     if (!cell || cell.v === undefined || cell.v === null || cell.v === '') return NaN;
-    return typeof cell.v === 'number' ? cell.v : parseFloat(cell.v);
+    return parseCoordNumber(cell.v);
+  }
+
+  // Đọc tọa độ chịu được cả trường hợp cột bị định dạng/nhập theo kiểu Việt Nam
+  // (dấu phẩy làm phân cách thập phân, vd "10,823456" hoặc "106.629,630").
+  // Nếu chỉ dùng parseFloat() thẳng, các chuỗi này bị cắt ngay tại dấu phẩy,
+  // ra một số nguyên/số cụt sai hẳn -> marker "văng" ra khỏi TP.HCM.
+  function parseCoordNumber(v){
+    if (typeof v === 'number') return v;
+    let s = String(v).trim();
+    if (s.indexOf(',') !== -1 && s.indexOf('.') !== -1) {
+      // Có cả 2 dấu: chấm là phân cách hàng nghìn, phẩy là thập phân
+      s = s.replace(/\./g, '').replace(',', '.');
+    } else if (s.indexOf(',') !== -1) {
+      // Chỉ có dấu phẩy -> coi là dấu thập phân kiểu Việt Nam
+      s = s.replace(',', '.');
+    }
+    return parseFloat(s);
   }
 
   function buildPopupEl(name, phone, address, reason, birthYear){
@@ -2678,9 +2695,13 @@ document.getElementById('btn-admin-wipe-leads').addEventListener('click', async 
       const rows = (data.table && data.table.rows) || [];
 
       candidateLayer.clearLayers();
-      let shown = 0, skippedNoCoord = 0, skippedFiltered = 0;
+      let shown = 0, skippedNoCoord = 0, skippedFiltered = 0, skippedOutOfRange = 0;
       let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
       const bounds = [];
+      const badExamples = [];
+      // Việt Nam nằm trong khoảng lat 8–24, lng 100–111. Dùng để phát hiện
+      // tọa độ bị "văng" ra ngoài (đảo lat/lng, lệch cột, hoặc lỗi định dạng số).
+      function inVN(lat, lng){ return lat >= 8 && lat <= 24 && lng >= 100 && lng <= 111; }
 
       for (const row of rows) {
         const result = String(cellText(row, COL.result)).trim();
@@ -2689,9 +2710,22 @@ document.getElementById('btn-admin-wipe-leads').addEventListener('click', async 
         const checkColValue = String(cellText(row, COL.checkCol)).trim();
         if (!checkColValue) { skippedFiltered++; continue; }
 
-        const lat = cellNumber(row, COL.lat);
-        const lng = cellNumber(row, COL.lng);
+        let lat = cellNumber(row, COL.lat);
+        let lng = cellNumber(row, COL.lng);
         if (!isFinite(lat) || !isFinite(lng) || (lat === 0 && lng === 0)) { skippedNoCoord++; continue; }
+
+        if (!inVN(lat, lng)) {
+          // Thử đảo lat/lng — lỗi hay gặp nhất khi 2 cột bị nhập/đọc ngược nhau.
+          if (inVN(lng, lat)) {
+            const tmp = lat; lat = lng; lng = tmp;
+          } else {
+            skippedOutOfRange++;
+            if (badExamples.length < 3) {
+              badExamples.push(String(cellText(row, COL.name) || '(?)') + ': ' + lat.toFixed(3) + ', ' + lng.toFixed(3));
+            }
+            continue;
+          }
+        }
 
         const name = String(cellText(row, COL.name) || '').trim();
         const phone = String(cellText(row, COL.phone) || '').trim();
@@ -2717,6 +2751,11 @@ document.getElementById('btn-admin-wipe-leads').addEventListener('click', async 
         let msg = 'Đã tải ' + shown + ' ứng viên.';
         if (skippedFiltered) msg += ' Đã bỏ ' + skippedFiltered + ' người "' + EXCLUDE_RESULT + '".';
         if (skippedNoCoord) msg += ' Bỏ qua ' + skippedNoCoord + ' dòng thiếu tọa độ.';
+        if (skippedOutOfRange) {
+          msg += ' ⚠️ ' + skippedOutOfRange + ' dòng có tọa độ nằm ngoài Việt Nam (đã bỏ qua)';
+          if (badExamples.length) msg += ', ví dụ: ' + badExamples.join(' | ');
+          msg += '.';
+        }
         if (shown > 0) {
           // In ra khoảng tọa độ thực tế đã vẽ để dễ phát hiện lỗi (vd. tất cả
           // dồn về đúng 1 điểm do lỗi định dạng số, hoặc tọa độ nằm ngoài
@@ -2778,7 +2817,19 @@ const COL2 = { name: 2, address: 3, lat: 4, lng: 5, phone: 6, birthYear: 7, chec
   function cellNumber2(row, index){
     const cell = (row.c || [])[index];
     if (!cell || cell.v === undefined || cell.v === null || cell.v === '') return NaN;
-    return typeof cell.v === 'number' ? cell.v : parseFloat(cell.v);
+    return parseCoordNumber2(cell.v);
+  }
+
+  // Tương tự sheet 1: chịu được tọa độ nhập/định dạng kiểu VN (dấu phẩy thập phân).
+  function parseCoordNumber2(v){
+    if (typeof v === 'number') return v;
+    let s = String(v).trim();
+    if (s.indexOf(',') !== -1 && s.indexOf('.') !== -1) {
+      s = s.replace(/\./g, '').replace(',', '.');
+    } else if (s.indexOf(',') !== -1) {
+      s = s.replace(',', '.');
+    }
+    return parseFloat(s);
   }
 
   function buildPopup2El(name, phone, address, birthYear){
@@ -2808,17 +2859,31 @@ const COL2 = { name: 2, address: 3, lat: 4, lng: 5, phone: 6, birthYear: 7, chec
       const rows = (data.table && data.table.rows) || [];
 
       candidate2Layer.clearLayers();
-      let shown = 0, skippedNoCoord = 0, skippedFiltered = 0;
+      let shown = 0, skippedNoCoord = 0, skippedFiltered = 0, skippedOutOfRange = 0;
       let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
       const bounds = [];
+      const badExamples = [];
+      function inVN2(lat, lng){ return lat >= 8 && lat <= 24 && lng >= 100 && lng <= 111; }
 
       for (const row of rows) {
         const checkColValue = String(cellText2(row, COL2.checkCol)).trim();
         if (checkColValue) { skippedFiltered++; continue; } // chỉ giữ dòng có cột K TRỐNG
 
-        const lat = cellNumber2(row, COL2.lat);
-        const lng = cellNumber2(row, COL2.lng);
+        let lat = cellNumber2(row, COL2.lat);
+        let lng = cellNumber2(row, COL2.lng);
         if (!isFinite(lat) || !isFinite(lng) || (lat === 0 && lng === 0)) { skippedNoCoord++; continue; }
+
+        if (!inVN2(lat, lng)) {
+          if (inVN2(lng, lat)) {
+            const tmp = lat; lat = lng; lng = tmp;
+          } else {
+            skippedOutOfRange++;
+            if (badExamples.length < 3) {
+              badExamples.push(String(cellText2(row, COL2.name) || '(?)') + ': ' + lat.toFixed(3) + ', ' + lng.toFixed(3));
+            }
+            continue;
+          }
+        }
 
         const name = String(cellText2(row, COL2.name) || '').trim();
         const phone = String(cellText2(row, COL2.phone) || '').trim();
@@ -2843,6 +2908,11 @@ const COL2 = { name: 2, address: 3, lat: 4, lng: 5, phone: 6, birthYear: 7, chec
         let msg = 'Đã tải ' + shown + ' ứng viên.';
         if (skippedFiltered) msg += ' Đã bỏ ' + skippedFiltered + ' người đã có cột K.';
         if (skippedNoCoord) msg += ' Bỏ qua ' + skippedNoCoord + ' dòng thiếu tọa độ.';
+        if (skippedOutOfRange) {
+          msg += ' ⚠️ ' + skippedOutOfRange + ' dòng có tọa độ nằm ngoài Việt Nam (đã bỏ qua)';
+          if (badExamples.length) msg += ', ví dụ: ' + badExamples.join(' | ');
+          msg += '.';
+        }
         if (shown > 0) {
           msg += ' Khoảng tọa độ: lat ' + minLat.toFixed(3) + '–' + maxLat.toFixed(3) +
                  ', lng ' + minLng.toFixed(3) + '–' + maxLng.toFixed(3) + '.';
