@@ -23,17 +23,12 @@ const MAX_TOTAL_HISTORY_POINTS = 20000;
 // across a large group can produce tens of thousands of raw points and eat
 // the entire budget by itself, starving every other day's trail.
 const TRAIL_DOWNSAMPLE_SECONDS = 60;
-// How far back (in time) trail sessions are pulled into the map BY DEFAULT.
-// Data is still kept in the DB for HISTORY_RETENTION_MS (~3 tháng) — this is
-// only how much of it a normal (frequent, unauthenticated) poll scans each
-// time. Scanning the full 90-day window on every single poll is what blew
-// through D1's free daily row-read quota once the group's history grew large
-// (session_max below has to scan every row in the window on every call, no
-// matter how few points end up rendered). Most day-to-day use only needs
-// "who's out and where have they been today/recently" — full-range digging
-// is opt-in via ?days=N (see onRequestGet) for the admin panel's cleanup UI.
-const DEFAULT_TRAIL_DAYS = 2;
-const MAX_TRAIL_DAYS = 90; // clamp to HISTORY_RETENTION_MS's ~3 tháng
+// How far back (in time) trail sessions are still pulled into the map.
+// Matches HISTORY_RETENTION_MS so every point still in the database (up to
+// the permanent-deletion cutoff) is visible on the map — nothing is hidden
+// by the API before it's actually deleted. If HISTORY_RETENTION_MS changes,
+// change this too so the two stay in sync.
+const TRAIL_VISIBILITY_MS = HISTORY_RETENTION_MS; // ~3 tháng, khớp thời gian lưu trữ
 // Each time someone turns location-sharing back on, a new sessionId starts —
 // so a multi-day trail is really several sessions per participant. This caps
 // how many of a person's most recent sessions we pull (roughly "how many
@@ -137,11 +132,7 @@ export const onRequestGet = async ({ request, env }) => {
   // Worker CPU time — only parsing/looping in JS does), via two small raw
   // queries instead of drizzle's query builder, so only the points actually
   // needed ever reach the Worker's JS.
-  const daysParam = Number(url.searchParams.get("days"));
-  const trailDays = Number.isFinite(daysParam) && daysParam > 0
-    ? Math.min(daysParam, MAX_TRAIL_DAYS)
-    : DEFAULT_TRAIL_DAYS;
-  const trailCutoffSec = Math.floor((Date.now() - trailDays * 24 * 60 * 60 * 1000) / 1000);
+  const trailCutoffSec = Math.floor((Date.now() - TRAIL_VISIBILITY_MS) / 1000);
 
   // Single query: rank each participant's sessions by recency (session_max +
   // correlated-subquery rank, same as before — still avoids window functions
